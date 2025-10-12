@@ -80,8 +80,8 @@ class BrzParser {
         let blobs = [];
         let compressionMethodOffset = nameTableOffset;
         let decompressedLengthsOffset = compressionMethodOffset + this.index.blobCount;
-        let compressedLengthsOffset = decompressedLengthsOffset + 4 * this.index.fileCount;
-        let hashesOffset = compressedLengthsOffset + 4 * this.index.fileCount;
+        let compressedLengthsOffset = decompressedLengthsOffset + 4 * this.index.blobCount;
+        let hashesOffset = compressedLengthsOffset + 4 * this.index.blobCount;
         let blobDataOffset = 0x2D + this.header.indexCompressedLength;
         for(let i=0; i<this.index.blobCount; i++){
             let newBlob = {
