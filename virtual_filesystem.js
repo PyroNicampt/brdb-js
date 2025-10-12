@@ -2,7 +2,6 @@
 
 const {Encoder, Decoder} = require('@toondepauw/node-zstd');
 const fs = require('fs');
-const { start } = require('repl');
 //const zstdEncoder = new Encoder(3);
 const zstdDecoder = new Decoder();
 
@@ -55,7 +54,9 @@ class VirtualFilesystem{
         return blob;
     }
     dump(name = 'world', revision){
-        if(revision == null) revision = this.revisions.length-1;
+        if(revision == null || revision <= 0 || revision >= this.revisions.length)
+            revision = this.revisions.length-1;
+
         let timestamp = this.revisions[revision].created_at;
 
         let worldFolder = `./dump/${name}`;
