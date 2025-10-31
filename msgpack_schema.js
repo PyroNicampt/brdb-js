@@ -11,18 +11,43 @@ const validTypes = [
 
 function readFile(mpsData, schemaData){
     let rawSchema = msgpack.decode(schemaData);
-    //console.log(JSON.stringify(rawSchema, null, 2));
+    console.log('SCHEMA:\n\n', JSON.stringify(rawSchema, null, 2));
 
-    let structureOfArrays = null;
-    let schema = null;
-    for(let root of rawSchema){
-        if(Object.keys(root).length == 0) continue;
-        schema = root;
-        break;
+
+    let enums = rawSchema[0];
+    let structs = rawSchema[1];
+
+    let soaKey = Object.keys(structs)[Object.keys(structs).length-1];
+    
+    let data = [];
+    for(let object of msgpack.decodeMulti(mpsData)){
+        data.push(object);
     }
-    for(let structName in schema){
-        if(structName.endsWith('SoA')) structureOfArrays = structName;
+    
+    console.log('DATA:\n\n', data);
+
+    let output = [];
+    let dataIndex = 0;
+    let buildData = (schemaInput) => {
+        switch(typeof(schemaInput)){
+            case 'string':
+                
+                break;
+            case 'object':
+                if(Array.isArray(schemaInput)){
+                    
+                }else{
+                    
+                }
+                break;
+            default:
+                console.log(`unhandled datatype ${typeof(schemaInput)} for ${schemaInput}`);
+        }
+    };
+    for(let soaObj in structs[soaKey]){
+        
     }
+    
     /*
     console.log(schema);
     console.log(Object.keys(schema[structureOfArrays]));
@@ -31,7 +56,7 @@ function readFile(mpsData, schemaData){
     for(let object of msgpack.decodeMulti(mpsData)){
         console.log(object,',');
     }//*/
-    //*
+    /*
     let data = [];
     for(let object of msgpack.decodeMulti(mpsData)){
         data.push(object);
@@ -49,7 +74,7 @@ function readFile(mpsData, schemaData){
         }
         dataIndex++;
     }
-    console.log(output);
+    return output;
     //*/
 }
 

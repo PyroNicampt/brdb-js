@@ -54,6 +54,18 @@ for(let operation of operations){
             saveFile.dump(revisionNumber);
             console.log('Dumped filesystem');
             break;
+        case 'listowners':
+            console.log(saveFile.vfs.readMps('World/0/Owners.mps', revisionNumber, true));
+            break;
+        case 'test':
+            //saveFile.vfs.readMps('World/0/Entities/Chunks/0_0_0.mps');
+            //saveFile.vfs.readMps('World/0/GlobalData.mps');
+            //saveFile.vfs.readMps('World/0/Bricks/Grids/1/Components/-1_0_1.mps');
+            //saveFile.vfs.readMps('World/0/Owners.mps');
+            //saveFile.vfs.readMps('World/0/Bricks/Grids/1/Chunks/0_0_0.mps');
+            //saveFile.vfs.readMps('World/0/Bricks/Grids/1/ChunkIndex.mps');
+            saveFile.vfs.readMps('World/0/Entities/ChunkIndex.mps');
+            break;
         /*case 'mps':
             let testFilename = 'GlobalData';
             let testPath = null;

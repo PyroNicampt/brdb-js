@@ -2,13 +2,23 @@
 
 const {Encoder, Decoder} = require('@toondepauw/node-zstd');
 const fs = require('fs');
+const path = require('path');
 //const zstdEncoder = new Encoder(3);
 const zstdDecoder = new Decoder();
+const mpsReader = require('./msgpack_schema').readFile;
+
+// .mps files in these folders usually are named by coordinates, and their .schema are named after the folder.
+const sharedSchemaFolderNames = [
+    'Chunks',
+    'Components',
+    'Wires',
+];
 
 class VirtualFilesystem{
     folders = [];
     files = [];
     revisions = [];
+    latestRevision = 0;
 
     addFile(fileData){
         this.files[fileData.file_id] = fileData;
@@ -18,9 +28,10 @@ class VirtualFilesystem{
     }
     addRevision(revisionData){
         this.revisions[revisionData.revision_id] = revisionData;
+        this.latestRevision = Math.max(revisionData.revision_id, this.latestRevision);
     }
     findFile(query, revision, path){
-        if(revision == null) revision = this.revisions.length-1;
+        revision = this.validateRevision(revision);
         let timestamp = this.revisions[revision].created_at;
         //If any of these checks return true, skip this file
         let commonSkipConditions = file => {
@@ -54,8 +65,7 @@ class VirtualFilesystem{
         return blob;
     }
     dump(name = 'world', revision){
-        if(revision == null || revision <= 0 || revision >= this.revisions.length)
-            revision = this.revisions.length-1;
+        revision = this.validateRevision(revision);
 
         let timestamp = this.revisions[revision].created_at;
 
@@ -88,6 +98,70 @@ class VirtualFilesystem{
         }
         return finalPath;
     }
+    dumpSchema(){
+        for(let file of this.files){
+            if(!file) continue;
+            if(file.name.endsWith('.schema')){
+                console.log('\n\n',file.name,'\n');
+                mpsReader(null, file.blob.content);
+            }
+        }
+    }
+    readMps(mpsFile, revision, rotateArrays = false){
+        if(!mpsFile.endsWith('.mps'))
+            throw new Error(`${mpsFile} is not a .mps file`);
+        const dirName = path.dirname(mpsFile);
+        const fileName = path.basename(mpsFile, '.mps');
+        
+        let targetMps = this.findFile(fileName+'.mps', revision, dirName);
+        if(targetMps){
+            let targetSchema = this.findFile(fileName+'.schema', revision, dirName);
+            if(!targetSchema && targetMps.parent_id){
+                let nextParent = targetMps.parent_id;
+                let nextFile = fileName+'Shared.schema';
+                for(let sharedSchemaFolderName of sharedSchemaFolderNames){
+                    if(sharedSchemaFolderName == this.folders[nextParent].name){
+                        nextFile = sharedSchemaFolderName+'Shared.schema';
+                        break;
+                    }
+                }
+                let iterations = 0;
+                while(nextParent){
+                    targetSchema = this.findFile(nextFile, revision, this.buildPath(nextParent));
+                    if(targetSchema) break;
+
+                    nextParent = this.folders[nextParent].parent_id;
+                    
+                    iterations++;
+                    if(iterations > 255) throw new Error(`Too many levels deep in folder id ${targetMps.parent_id}`);
+                }
+            }
+            
+            if(!targetSchema) throw new Error(`No suitable .schema found for .mps: ${mpsFile}`);
+            console.log(`Found ${this.buildPath(targetMps.parent_id, targetMps.name)} and ${this.buildPath(targetSchema.parent_id, targetSchema.name)}\nReading...`)
+            let output = mpsReader(targetMps.blob.content, targetSchema.blob.content);
+            if(rotateArrays) output = rotateSoA(output);
+            return output;
+        }
+        throw new Error(`${mpsFile} was not found in virtual filesystem`);
+    }
+    validateRevision(revision){
+        if(revision == null || revision <= 0 || revision > this.latestRevision)
+            return this.latestRevision;
+        return revision;
+    }
+}
+
+function rotateSoA(mpsData){
+    let newArray = [];
+    for(let key in mpsData){
+        let newKeyName = key.replaceAll(/s$/g, '');
+        for(let i=0; i<mpsData[key].length; i++){
+            if(newArray[i] == null) newArray[i] = {};
+            newArray[i][newKeyName] = mpsData[key][i];
+        }
+    }
+    return newArray;
 }
 
 exports.VirtualFilesystem = VirtualFilesystem;
