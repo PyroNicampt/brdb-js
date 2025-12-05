@@ -1,5 +1,6 @@
 *.brdb
 *.brz
+*.brs
 
 /node_modules
 /tmp

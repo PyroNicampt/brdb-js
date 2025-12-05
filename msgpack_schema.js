@@ -11,8 +11,7 @@ const validTypes = [
 
 function readFile(mpsData, schemaData){
     let rawSchema = msgpack.decode(schemaData);
-    console.log('SCHEMA:\n\n', JSON.stringify(rawSchema, null, 2));
-
+    console.log('SCHEMA:\n', JSON.stringify(rawSchema, null, 2));
 
     let enums = rawSchema[0];
     let structs = rawSchema[1];
@@ -78,4 +77,16 @@ function readFile(mpsData, schemaData){
     //*/
 }
 
-exports.readFile = readFile;
+function readFileRaw(mpsData, schemaData){
+    let rawSchema = msgpack.decode(schemaData);
+    console.log('SCHEMA:\n', JSON.stringify(rawSchema, null, 2));
+
+    let data = [];
+    for(let object of msgpack.decodeMulti(mpsData)){
+        data.push(object);
+    }
+    
+    console.log('DATA:\n\n', JSON.stringify(data));
+}
+
+exports.readFile = readFileRaw;

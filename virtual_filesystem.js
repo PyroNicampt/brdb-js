@@ -15,6 +15,7 @@ const sharedSchemaFolderNames = [
 ];
 
 class VirtualFilesystem{
+    name = '';
     folders = [];
     files = [];
     revisions = [];
@@ -31,7 +32,7 @@ class VirtualFilesystem{
         this.latestRevision = Math.max(revisionData.revision_id, this.latestRevision);
     }
     findFile(query, revision, path){
-        revision = this.validateRevision(revision);
+        revision = validateRevision(this, revision);
         let timestamp = this.revisions[revision].created_at;
         //If any of these checks return true, skip this file
         let commonSkipConditions = file => {
@@ -64,8 +65,9 @@ class VirtualFilesystem{
         blob.content = zstdDecoder.decodeSync(blob.content);
         return blob;
     }
-    dump(name = 'world', revision){
-        revision = this.validateRevision(revision);
+    dump(name, revision){
+        if(!name) name = this.name;
+        revision = validateRevision(this, revision);
 
         let timestamp = this.revisions[revision].created_at;
 
@@ -84,6 +86,14 @@ class VirtualFilesystem{
             let path = this.buildPath(file.parent_id, file.name);
             fs.writeFileSync(worldFolder + '/' + path, file.blob.content, {encoding: null, flag: 'w'});
         }
+    }
+    getStats(){
+        return {
+            fileName: this.name,
+            fileCount: this.files.length-1,
+            folderCount: this.folders.length-1,
+            revisions: this.revisions.length-1,
+        };
     }
     buildPath(startIndex, startFile = ''){
         let finalPath = startFile;
@@ -145,11 +155,12 @@ class VirtualFilesystem{
         }
         throw new Error(`${mpsFile} was not found in virtual filesystem`);
     }
-    validateRevision(revision){
-        if(revision == null || revision <= 0 || revision > this.latestRevision)
-            return this.latestRevision;
-        return revision;
-    }
+}
+
+function validateRevision(vfs, revision){
+    if(revision == null || revision <= 0 || revision > vfs.latestRevision)
+        return vfs.latestRevision;
+    return revision;
 }
 
 function rotateSoA(mpsData){

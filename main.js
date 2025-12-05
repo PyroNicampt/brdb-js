@@ -3,8 +3,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const BrzParser = require('./brz_parser').BrzParser;
-const BrdbParser = require('./brdb_parser').BrdbParser;
+const BrzRead = require('./brz').read;
+const BrdbRead = require('./brdb').read;
+
+const Brs = require('brs-js');
 
 let operations = ['stats'];
 let targetFile = './world.brdb';
@@ -25,10 +27,18 @@ const targetExtension = path.extname(targetFile);
 let saveFile = null;
 switch(targetExtension){
     case '.brdb':
-        saveFile = new BrdbParser(targetFile);
+        console.log('Reading BRDB...');
+        saveFile = BrdbRead(targetFile);
         break;
     case '.brz':
-        saveFile = new BrzParser(targetFile);
+        console.log('Reading BRZ...');
+        saveFile = BrzRead(targetFile);
+        break;
+    case '.brs':
+        console.log('Reading BRS...');
+        saveFile = Brs.read(fs.readFileSync(targetFile));
+        fs.writeFileSync(`./dump/${path.basename(targetFile, '.brs')}.json`, JSON.stringify(saveFile, null, 4));
+        process.exit();
         break;
     default:
         console.log(`Incorrect filetype, must be .brdb or .brz:\n${targetFile}`);
@@ -47,24 +57,27 @@ for(let operation of operations){
 for(let operation of operations){
     switch(operation){
         case 'stats':
-            saveFile.printStats();
+            console.log('Stats Dump:\n', saveFile.getStats());
             break;
         case 'dump':
             console.log('Dumping filesystem...');
-            saveFile.dump(revisionNumber);
+            saveFile.dump(null, revisionNumber);
             console.log('Dumped filesystem');
             break;
         case 'listowners':
-            console.log(saveFile.vfs.readMps('World/0/Owners.mps', revisionNumber, true));
+            //console.log('Owners:\n', saveFile.readMps('World/0/Owners.mps', revisionNumber, true));
+            saveFile.readMps('World/0/Owners.mps');
             break;
         case 'test':
-            //saveFile.vfs.readMps('World/0/Entities/Chunks/0_0_0.mps');
-            //saveFile.vfs.readMps('World/0/GlobalData.mps');
-            //saveFile.vfs.readMps('World/0/Bricks/Grids/1/Components/-1_0_1.mps');
-            //saveFile.vfs.readMps('World/0/Owners.mps');
-            //saveFile.vfs.readMps('World/0/Bricks/Grids/1/Chunks/0_0_0.mps');
-            //saveFile.vfs.readMps('World/0/Bricks/Grids/1/ChunkIndex.mps');
-            saveFile.vfs.readMps('World/0/Entities/ChunkIndex.mps');
+            //saveFile.readMps('World/0/Entities/Chunks/0_0_0.mps');
+            //saveFile.readMps('World/0/GlobalData.mps');
+            //saveFile.readMps('World/0/Bricks/Grids/1/Components/-1_0_1.mps');
+            saveFile.readMps('World/0/Owners.mps');
+            //saveFile.readMps('World/0/Bricks/Grids/1/Chunks/0_0_0.mps');
+            //saveFile.readMps('World/0/Bricks/Grids/1/ChunkIndex.mps');
+            //saveFile.readMps('World/0/Entities/ChunkIndex.mps');
+            //saveFile.readMps('World/0/Bricks/Grids/6/ChunkIndex.mps');
+            //saveFile.readMps('World/0/Bricks/Grids/1/ChunkIndex.mps');
             break;
         /*case 'mps':
             let testFilename = 'GlobalData';
