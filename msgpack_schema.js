@@ -79,14 +79,16 @@ function readFile(mpsData, schemaData){
 
 function readFileRaw(mpsData, schemaData){
     let rawSchema = msgpack.decode(schemaData);
-    console.log('SCHEMA:\n', JSON.stringify(rawSchema, null, 2));
+    //console.log('SCHEMA:\n', JSON.stringify(rawSchema, null, 2));
 
     let data = [];
     for(let object of msgpack.decodeMulti(mpsData)){
         data.push(object);
     }
     
-    console.log('DATA:\n\n', JSON.stringify(data));
+    //console.log('DATA:\n', JSON.stringify(data));
+    return {schema:rawSchema, data:data};
 }
 
-exports.readFile = readFileRaw;
+exports.readFile = readFile;
+exports.readFileRaw = readFileRaw;

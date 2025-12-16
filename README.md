@@ -5,4 +5,5 @@ A pure node.js implementation of brickadia .brz/.brdb save file reader/writer.
 
 Convenience links for myself:
 - [BRDB Spec](https://github.com/brickadia-community/brdb/)
+- [Msgpack-Schema](https://gist.github.com/Zeblote/053d54cc820df3bccad57df676202895)
 - [Msgpack Spec](https://github.com/msgpack/msgpack/blob/master/spec.md)

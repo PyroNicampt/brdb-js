@@ -66,7 +66,52 @@ for(let operation of operations){
             break;
         case 'listowners':
             //console.log('Owners:\n', saveFile.readMps('World/0/Owners.mps', revisionNumber, true));
-            saveFile.readMps('World/0/Owners.mps');
+            let raw = saveFile.readMps('World/0/Owners.mps', null, null, true);
+            let data = raw.data;
+            let userData = [];
+            for(let i=0; i<data[1].length; i++){
+                userData[i] = {
+                    userName:data[1][i],
+                    displayName:data[2][i],
+                    entityCount:data[3][i],
+                    brickCount:data[4][i],
+                    componentCount:data[5][i],
+                    wireCount:data[6][i]
+                };
+            }
+            userData.sort((a,b) => b.wireCount - a.wireCount);
+            console.log('\nMost Wires:')
+            for(let user of userData){
+                if(user.wireCount < 500) break;
+                console.log(`${user.displayName} (${user.userName}): ${user.wireCount}`);
+            }
+            userData.sort((a,b) => b.componentCount - a.componentCount);
+            console.log('\nMost Components:')
+            for(let user of userData){
+                if(user.componentCount < 500) break;
+                console.log(`${user.displayName} (${user.userName}): ${user.componentCount}`);
+            }
+            userData.sort((a,b) => b.brickCount - a.brickCount);
+            console.log('\nMost Bricks:')
+            for(let user of userData){
+                if(user.brickCount < 1000) break;
+                console.log(`${user.displayName} (${user.userName}): ${user.brickCount}`);
+            }
+            userData.sort((a,b) => b.entityCount - a.entityCount);
+            console.log('\nMost Entities:')
+            for(let user of userData){
+                if(user.entityCount < 10) break;
+                console.log(`${user.displayName} (${user.userName}): ${user.entityCount}`);
+            }
+            break;
+        case 'bundle':
+            const bundleFile = saveFile.findFile('Bundle.json', null, 'Meta');
+            if(!bundleFile){
+                console.log('No Bundle Found!');
+                break;
+            }
+            const bundle = JSON.parse(bundleFile.blob.content.toString());
+            console.log(bundle);
             break;
         case 'test':
             //saveFile.readMps('World/0/Entities/Chunks/0_0_0.mps');

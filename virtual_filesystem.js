@@ -6,6 +6,7 @@ const path = require('path');
 //const zstdEncoder = new Encoder(3);
 const zstdDecoder = new Decoder();
 const mpsReader = require('./msgpack_schema').readFile;
+const mpsReaderRaw = require('./msgpack_schema').readFileRaw;
 
 // .mps files in these folders usually are named by coordinates, and their .schema are named after the folder.
 const sharedSchemaFolderNames = [
@@ -113,11 +114,11 @@ class VirtualFilesystem{
             if(!file) continue;
             if(file.name.endsWith('.schema')){
                 console.log('\n\n',file.name,'\n');
-                mpsReader(null, file.blob.content);
+                console.log(JSON.stringify(mpsReaderRaw(null, file.blob.content).schema, null, 2));
             }
         }
     }
-    readMps(mpsFile, revision, rotateArrays = false){
+    readMps(mpsFile, revision, rotateArrays = false, getRaw = false){
         if(!mpsFile.endsWith('.mps'))
             throw new Error(`${mpsFile} is not a .mps file`);
         const dirName = path.dirname(mpsFile);
@@ -149,9 +150,15 @@ class VirtualFilesystem{
             
             if(!targetSchema) throw new Error(`No suitable .schema found for .mps: ${mpsFile}`);
             console.log(`Found ${this.buildPath(targetMps.parent_id, targetMps.name)} and ${this.buildPath(targetSchema.parent_id, targetSchema.name)}\nReading...`)
-            let output = mpsReader(targetMps.blob.content, targetSchema.blob.content);
-            if(rotateArrays) output = rotateSoA(output);
-            return output;
+            try{
+                const readFunction = getRaw ? mpsReaderRaw : mpsReader;
+                let output = readFunction(targetMps.blob.content, targetSchema.blob.content);
+                if(rotateArrays && !getRaw) output = rotateSoA(output);
+                return output;
+            }catch(e){
+                console.warn(`Failed to read ${mpsFile}`);
+                throw e;
+            }
         }
         throw new Error(`${mpsFile} was not found in virtual filesystem`);
     }
