@@ -13,36 +13,6 @@ function read(targetFile){
     vfs.name = path.basename(targetFile, '.brdb');
 
     const db = new Database(targetFile);
-
-    //TEMP SHIT
-    /*
-    let files = [];
-    let blobs = [];
-
-    for(let file_row of db.prepare('SELECT * FROM files').iterate()){
-        files.push(file_row);
-    }
-
-    for(let blob_row of db.prepare('SELECT blob_id, size_uncompressed, size_compressed FROM blobs').iterate()){
-        blobs.push(blob_row);
-    }
-
-    console.log('File Count: ', files.length);
-    console.log('Blob Count: ', blobs.length);
-
-    let usedBlobCount = 0;
-
-    for(let thisFile of files){
-        //if(thisFile.deleted_at) continue;
-        let thisBlob = blobs[thisFile.content_id-1];
-        if(thisBlob.isUsed) continue;
-        thisBlob.isUsed = true;
-        usedBlobCount++;
-    }
-
-    console.log('Used Blobs: ', usedBlobCount);*/
-    // END OF TEMP SHIT
-
     
     for(let folder_row of db.prepare('SELECT * FROM folders').iterate()){
         vfs.addFolder(folder_row);
@@ -53,12 +23,21 @@ function read(targetFile){
     for(let revision_row of db.prepare('SELECT * FROM revisions').iterate()){
         vfs.addRevision(revision_row);
     }
-    let blobQuery = db.prepare('SELECT * FROM blobs WHERE blob_id=?');
-    for(let file of vfs.files){
-        if(!file) continue;
-        file.blob = vfs.processBlob(blobQuery.get(file.content_id));
-    }
     db.close();
+
+    vfs.loadBlobs = targets => {
+        if(typeof(targets) != 'object') throw new Error('Target must be an object or array');
+
+        if(!Array.isArray(targets)) targets = [targets];
+
+        const db = new Database(targetFile);
+        let blobQuery = db.prepare('SELECT * FROM blobs WHERE blob_id=?');
+        for(let target of targets){
+            if(!target || target.blob) continue;
+            target.blob = vfs.processBlob(blobQuery.get(target.content_id));
+        }
+        db.close();
+    };
 
     return vfs;
 }

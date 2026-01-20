@@ -91,6 +91,10 @@ function read(targetFile){
         if(!file) continue;
         file.blob = blobs[file.content_id-1];
     }
+
+    vfs.loadBlobs = () => {
+        console.log('Selective loading of blobs not yet implemented.');
+    }
     vfs.addRevision({
         revision_id: 1,
         description: 'Initial Revision',

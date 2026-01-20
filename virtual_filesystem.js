@@ -22,6 +22,9 @@ class VirtualFilesystem{
     revisions = [];
     latestRevision = 0;
 
+    //Override with a function to take in a single file object or a list of them and give them their blobs.
+    loadBlobs = () => {throw new Error('loadBlobs not implemented for filetype')};
+
     addFile(fileData){
         this.files[fileData.file_id] = fileData;
     }
@@ -80,10 +83,15 @@ class VirtualFilesystem{
             if(folder.created_at != null && folder.created_at > timestamp) continue;
             fs.mkdirSync(worldFolder + '/' + this.buildPath(folder.parent_id, folder.name), {recursive:true});
         }
+        let dumpFiles = [];
         for(let file of this.files){
             if(!file) continue;
             if(file.deleted_at != null && file.deleted_at <= timestamp) continue;
             if(file.created_at != null && file.created_at > timestamp) continue;
+            dumpFiles.push(file);
+        }
+        this.loadBlobs(dumpFiles);
+        for(let file of dumpFiles){            
             let path = this.buildPath(file.parent_id, file.name);
             fs.writeFileSync(worldFolder + '/' + path, file.blob.content, {encoding: null, flag: 'w'});
         }
@@ -110,12 +118,17 @@ class VirtualFilesystem{
         return finalPath;
     }
     dumpSchema(){
+        let schemaFiles = [];
         for(let file of this.files){
             if(!file) continue;
             if(file.name.endsWith('.schema')){
-                console.log('\n\n',file.name,'\n');
-                console.log(JSON.stringify(mpsReaderRaw(null, file.blob.content).schema, null, 2));
+                schemaFiles.push(file);
             }
+        }
+        this.loadBlobs(schemaFiles);
+        for(let file of schemaFiles){
+            console.log('\n\n',file.name,'\n');
+            console.log(JSON.stringify(mpsReaderRaw(null, file.blob.content).schema, null, 2));
         }
     }
     readMps(mpsFile, revision, rotateArrays = false, getRaw = false){
@@ -152,6 +165,7 @@ class VirtualFilesystem{
             console.log(`Found ${this.buildPath(targetMps.parent_id, targetMps.name)} and ${this.buildPath(targetSchema.parent_id, targetSchema.name)}\nReading...`)
             try{
                 const readFunction = getRaw ? mpsReaderRaw : mpsReader;
+                this.loadBlobs([targetMps, targetSchema]);
                 let output = readFunction(targetMps.blob.content, targetSchema.blob.content);
                 if(rotateArrays && !getRaw) output = rotateSoA(output);
                 return output;
