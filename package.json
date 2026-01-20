@@ -14,5 +14,8 @@
     "better-sqlite3": "^12.4.1",
     "brs-js": "^2.1.3",
     "sqlite3": "^5.1.7"
+  },
+  "bin": {
+    "execute": "main.js"
   }
 }
