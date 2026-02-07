@@ -46,6 +46,7 @@ function read(targetFile){
             folder_id: i+1,
             parent_id: indexData.readInt32LE(parentIdsOffset + 4 * i) + 1,
             name: indexData.toString('utf-8', nameTableOffset, nameTableOffset + nameLength),
+            created_at: 0,
         };
         if(newFolder.parent_id == 0) newFolder.parent_id = null;
         nameTableOffset += nameLength;
@@ -63,6 +64,7 @@ function read(targetFile){
             parent_id: indexData.readInt32LE(parentIdsOffset + 4 * i) + 1,
             content_id: indexData.readInt32LE(contentIdsOffset + 4 * i) + 1,
             name: indexData.toString('utf-8', nameTableOffset, nameTableOffset + nameLength),
+            created_at: 0,
         };
         if(newFile.parent_id == 0) newFile.parent_id = null;
         nameTableOffset += nameLength;
@@ -93,7 +95,7 @@ function read(targetFile){
     }
 
     vfs.loadBlobs = () => {
-        console.log('Selective loading of blobs not yet implemented.');
+        console.log('TODO: Selective loading of blobs in .brz not yet implemented.');
     }
     vfs.addRevision({
         revision_id: 1,

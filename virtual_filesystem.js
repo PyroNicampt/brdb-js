@@ -35,7 +35,20 @@ class VirtualFilesystem{
         this.revisions[revisionData.revision_id] = revisionData;
         this.latestRevision = Math.max(revisionData.revision_id, this.latestRevision);
     }
-    findFile(query, revision, path){
+    findFile(query, path, timestamp){
+        let results = this.findFiles(query, path);
+        if(!results) return null;
+        if(!timestamp) timestamp = this.revisions[this.latestRevision].created_at;
+
+        for(let i=results.length-1; i>=0; i--){
+            if((results[i].deleted_at == null || results[i].deleted_at > timestamp) && results[i].created_at <= timestamp){
+                return results[i];
+            }
+        }
+
+        //if(results[results.length-1].deleted_at == null) return results[results.length-1];
+        //return null;
+        /*
         revision = validateRevision(this, revision);
         let timestamp = this.revisions[revision].created_at;
         //If any of these checks return true, skip this file
@@ -58,11 +71,35 @@ class VirtualFilesystem{
             case 'number':
                 for(let file of this.files){
                     if(commonSkipConditions(file)) continue;
-                    if(file.file_id = query) return file;
+                    if(file.file_id == query) return file;
                 }
                 break;
         }
-        return null;
+        return null;*/
+    }
+    findFiles(query, path){
+        let results = [];
+        let commonSkipConditions = file => {
+            if(!file) return true;
+            if(path === '' && file.parent_id != null) return true;
+            if(path && this.buildPath(file.parent_id) !== path) return true;
+        }
+        switch(typeof(query)){
+            case 'string':
+                for(let file of this.files){
+                    if(commonSkipConditions(file)) continue;
+                    if(file.name == query) results.push(file);
+                }
+            case 'number':
+                for(let file of this.files){
+                    if(commonSkipConditions(file)) continue;
+                    if(file.file_id == query) results.push(file);
+                }
+        }
+        results.sort((a, b) => {
+            a.created_at - b.created_at;
+        });
+        return results;
     }
     processBlob(blob){
         if(blob.compression == 0) return blob;
@@ -131,7 +168,22 @@ class VirtualFilesystem{
             console.log(JSON.stringify(mpsReaderRaw(null, file.blob.content).schema, null, 2));
         }
     }
+
+    readMps(mpsFile, timestamp){
+        return grabMpsSchema(this, mpsFile, timestamp).data;
+    }
+
+    readSchema(mpsFile, timestamp){
+        return grabMpsSchema(this, mpsFile, timestamp, false).schema;
+    }
+
+    readMpsAndSchema(mpsFile, timestamp){
+        return grabMpsSchema(this, mpsFile, timestamp, true);
+    }
+
+    /*
     readMps(mpsFile, revision, rotateArrays = false, getRaw = false){
+        
         if(!mpsFile.endsWith('.mps'))
             throw new Error(`${mpsFile} is not a .mps file`);
         const dirName = path.dirname(mpsFile);
@@ -175,7 +227,54 @@ class VirtualFilesystem{
             }
         }
         throw new Error(`${mpsFile} was not found in virtual filesystem`);
+    }*/
+}
+
+function grabMpsSchema(vfs, mpsFile, timestamp, getMps = true){
+    if(!mpsFile.endsWith('.mps'))
+        throw new Error(`${mpsFile} is not an .mps file`);
+    const dirName = path.dirname(mpsFile);
+    const fileName = path.basename(mpsFile, '.mps');
+
+    let targetMps = vfs.findFile(fileName+'.mps', dirName, timestamp);
+    if(targetMps){
+        let targetSchema = vfs.findFile(fileName+'.schema', dirName, targetMps.created_at);
+        if(!targetSchema && targetMps.parent_id){
+            let nextParent = targetMps.parent_id;
+            let nextFile = fileName+'Shared.schema';
+            for(let sharedSchemaFolderName of sharedSchemaFolderNames){
+                if(sharedSchemaFolderName == vfs.folders[nextParent].name){
+                    nextFile = sharedSchemaFolderName+'Shared.schema';
+                    break;
+                }
+            }
+            let iterations = 0;
+            while(nextParent){
+                targetSchema = vfs.findFile(nextFile, vfs.buildPath(nextParent), targetMps.created_at);
+                if(targetSchema) break;
+
+                nextParent = vfs.folders[nextParent].parent_id;
+                
+                iterations++;
+                if(iterations > 255) throw new Error(`Too many levels deep in folder id ${targetMps.parent_id}`);
+            }
+        }
+        if(!targetSchema) throw new Error(`No suitable .schema found for .mps: ${mpsFile}`);
+        console.log(`Found ${vfs.buildPath(targetMps.parent_id, targetMps.name)} and ${vfs.buildPath(targetSchema.parent_id, targetSchema.name)}\nReading...`);
+        try{
+            if(getMps){
+                vfs.loadBlobs([targetMps, targetSchema]);
+                return mpsReader(targetMps.blob.content, targetSchema.blob.content);
+            }else{
+                vfs.loadBlobs([targetSchema]);
+                return mpsReader(null, targetSchema.blob.content);
+            }
+        }catch(e){
+            console.warn(`Failed to read ${mpsFile}`);
+            throw e;
+        }
     }
+    throw new Error(`${mpsFile} was not found in virtual filesystem`);
 }
 
 function validateRevision(vfs, revision){
