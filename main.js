@@ -46,22 +46,24 @@ switch(targetExtension){
 }
 
 let revisionNumber = null;
+let timestamp = null;
 
 for(let operation of operations){
     switch(operation.split('=')[0]){
         case 'revision':
             revisionNumber = Number.parseInt(operation.split('=')[1]);
+            timestamp = saveFile.getTimestampFromRevision(revisionNumber);
             break;
         case 'stats':
             console.log('Stats Dump:\n', saveFile.getStats());
             break;
         case 'dump':
             console.log('Dumping filesystem...');
-            saveFile.dump(null, saveFile.getTimestampFromRevision(revisionNumber));
+            saveFile.dump(null, timestamp);
             console.log('Dumped filesystem');
             break;
         case 'owners':
-            let ownerData = saveFile.readMps('World/0/Owners.mps', saveFile.getTimestampFromRevision(revisionNumber));
+            let ownerData = saveFile.readMps('World/0/Owners.mps', timestamp);
             let owners = [];
             for(let i=0; i<ownerData.UserIds.length; i++){
                 owners[i] = {
@@ -146,7 +148,7 @@ for(let operation of operations){
             let targetMps = operation.split('=')[1];
             if(targetMps) targetMps = targetMps.replaceAll(/(^"|"$)/g, '');
             if(!targetMps) console.log('Target required');
-            let mpsData = saveFile.readMps(targetMps, saveFile.getTimestampFromRevision(revisionNumber));
+            let mpsData = saveFile.readMps(targetMps, timestamp);
             let mpsTargetPath = `dump/${saveFile.name}/${targetMps}`.replaceAll(/.mps$/g,'.json');
             fs.mkdirSync(path.dirname(mpsTargetPath), {recursive:true})
             fs.writeFileSync(mpsTargetPath, JSON.stringify(mpsData, null, 2));
@@ -155,10 +157,59 @@ for(let operation of operations){
             let targetSchema = operation.split('=')[1];
             if(targetSchema) targetSchema = targetSchema.replaceAll(/(^"|"$)/g, '');
             if(!targetSchema) console.log('Target required');
-            let schemaData = saveFile.readSchema(targetSchema, saveFile.getTimestampFromRevision(revisionNumber));
+            let schemaData = saveFile.readSchema(targetSchema, timestamp);
             let schemaTargetPath = `dump/${saveFile.name}/${targetSchema}`.replaceAll(/.mps$/g,'.schema.json');
             fs.mkdirSync(path.dirname(schemaTargetPath), {recursive:true});
             fs.writeFileSync(schemaTargetPath, JSON.stringify({schema: schemaData}, null, 2));
             break;
+        case 'mapper':
+            (() => {
+                let unpackFlags = (flags, length) => {
+                    let unpack = [];
+                    for(let flag of flags){
+                        for(let i=0; i<8; i++){
+                            unpack.push(((flag >> i) & 1) == 1);
+                            length--;
+                            if(length == 0) return unpack;
+                        }
+                    }
+                    for(let i=0; i<length; i++){
+                        unpack.push(false);
+                    }
+                    return unpack;
+                };
+                let data = {
+                    owners: saveFile.readMps('World/0/Owners.mps', timestamp),
+                    entities: saveFile.readMps('World/0/Entities/Chunks/0_0_0.mps', timestamp),
+                };
+                let entCount = data.entities.PersistentIndices.length;
+                data.entities.WeldParentFlags = unpackFlags(data.entities.WeldParentFlags.Flags, entCount);
+                data.entities.PhysicsLockedFlags = unpackFlags(data.entities.PhysicsLockedFlags.Flags, entCount);
+                data.entities.PhysicsSleepingFlags = unpackFlags(data.entities.PhysicsSleepingFlags.Flags, entCount);
+                for(let i=0; i<data.owners.UserIds.length; i++){
+                    data.owners.UserIds[i] = (data.owners.UserIds[i].A.toString(16).padStart(2,'0') +
+                        data.owners.UserIds[i].B.toString(16).padStart(2,'0') +
+                        data.owners.UserIds[i].C.toString(16).padStart(2,'0') +
+                        data.owners.UserIds[i].D.toString(16).padStart(2,'0'))
+                        .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/g, '$1-$2-$3-$4-$5');
+                }
+                data.chunks = [];
+                const chunkCoordRegex = /([0-9-]+)_([0-9-]+)_([0-9-]+).mps/;
+                for(let file of saveFile.files){
+                    if(!file) continue;
+                    let path = saveFile.buildPath(file.parent_id, file.name);
+                    if(path.startsWith('World/0/Bricks/Grids/1/Chunks/')){
+                        let coordMatch = chunkCoordRegex.exec(file.name);
+                        data.chunks.push({
+                            position:{
+                                x: Number(coordMatch[1]),
+                                y: Number(coordMatch[2]),
+                                z: Number(coordMatch[3]),
+                            }
+                        });
+                    }
+                }
+                fs.writeFileSync(`dump/${saveFile.name}_mapper.json`, JSON.stringify(data, null, 2));
+            })();
     }
 }
