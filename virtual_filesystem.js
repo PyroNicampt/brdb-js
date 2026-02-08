@@ -33,7 +33,8 @@ class VirtualFilesystem{
     }
     addRevision(revisionData){
         this.revisions[revisionData.revision_id] = revisionData;
-        this.latestRevision = Math.max(revisionData.revision_id, this.latestRevision);
+        if(this.latestRevision == 0 || this.revisions[this.latestRevision].created_at < revisionData.created_at)
+            this.latestRevision = revisionData.revision_id;
     }
     findFile(query, path, timestamp){
         let results = this.findFiles(query, path);
@@ -45,37 +46,6 @@ class VirtualFilesystem{
                 return results[i];
             }
         }
-
-        //if(results[results.length-1].deleted_at == null) return results[results.length-1];
-        //return null;
-        /*
-        revision = validateRevision(this, revision);
-        let timestamp = this.revisions[revision].created_at;
-        //If any of these checks return true, skip this file
-        let commonSkipConditions = file => {
-            if(!file) return true;
-            if(file.deleted_at != null && file.deleted_at <= timestamp) return true;
-            if(file.created_at != null && file.created_at > timestamp) return true;
-            if(path === '' && file.parent_id != null) return true;
-            if(path){
-                if(this.buildPath(file.parent_id) !== path) return true;
-            }
-        }
-        switch(typeof(query)){
-            case 'string':
-                for(let file of this.files){
-                    if(commonSkipConditions(file)) continue;
-                    if(file.name == query) return file;
-                }
-                break;
-            case 'number':
-                for(let file of this.files){
-                    if(commonSkipConditions(file)) continue;
-                    if(file.file_id == query) return file;
-                }
-                break;
-        }
-        return null;*/
     }
     findFiles(query, path){
         let results = [];
@@ -106,11 +76,8 @@ class VirtualFilesystem{
         blob.content = zstdDecoder.decodeSync(blob.content);
         return blob;
     }
-    dump(name, revision){
+    dump(name, timestamp){
         if(!name) name = this.name;
-        revision = validateRevision(this, revision);
-
-        let timestamp = this.revisions[revision].created_at;
 
         let worldFolder = `./dump/${name}`;
         if(fs.existsSync(worldFolder)) fs.rmSync(worldFolder, {recursive:true});
@@ -181,53 +148,9 @@ class VirtualFilesystem{
         return grabMpsSchema(this, mpsFile, timestamp, true);
     }
 
-    /*
-    readMps(mpsFile, revision, rotateArrays = false, getRaw = false){
-        
-        if(!mpsFile.endsWith('.mps'))
-            throw new Error(`${mpsFile} is not a .mps file`);
-        const dirName = path.dirname(mpsFile);
-        const fileName = path.basename(mpsFile, '.mps');
-        
-        let targetMps = this.findFile(fileName+'.mps', revision, dirName);
-        if(targetMps){
-            let targetSchema = this.findFile(fileName+'.schema', revision, dirName);
-            if(!targetSchema && targetMps.parent_id){
-                let nextParent = targetMps.parent_id;
-                let nextFile = fileName+'Shared.schema';
-                for(let sharedSchemaFolderName of sharedSchemaFolderNames){
-                    if(sharedSchemaFolderName == this.folders[nextParent].name){
-                        nextFile = sharedSchemaFolderName+'Shared.schema';
-                        break;
-                    }
-                }
-                let iterations = 0;
-                while(nextParent){
-                    targetSchema = this.findFile(nextFile, revision, this.buildPath(nextParent));
-                    if(targetSchema) break;
-
-                    nextParent = this.folders[nextParent].parent_id;
-                    
-                    iterations++;
-                    if(iterations > 255) throw new Error(`Too many levels deep in folder id ${targetMps.parent_id}`);
-                }
-            }
-            
-            if(!targetSchema) throw new Error(`No suitable .schema found for .mps: ${mpsFile}`);
-            console.log(`Found ${this.buildPath(targetMps.parent_id, targetMps.name)} and ${this.buildPath(targetSchema.parent_id, targetSchema.name)}\nReading...`)
-            try{
-                const readFunction = getRaw ? mpsReaderRaw : mpsReader;
-                this.loadBlobs([targetMps, targetSchema]);
-                let output = readFunction(targetMps.blob.content, targetSchema.blob.content);
-                if(rotateArrays && !getRaw) output = rotateSoA(output);
-                return output;
-            }catch(e){
-                console.warn(`Failed to read ${mpsFile}`);
-                throw e;
-            }
-        }
-        throw new Error(`${mpsFile} was not found in virtual filesystem`);
-    }*/
+    getTimestampFromRevision(revision){
+        return this.revisions[validateRevision(this, revision)].created_at;
+    }
 }
 
 function grabMpsSchema(vfs, mpsFile, timestamp, getMps = true){
@@ -278,7 +201,7 @@ function grabMpsSchema(vfs, mpsFile, timestamp, getMps = true){
 }
 
 function validateRevision(vfs, revision){
-    if(revision == null || revision <= 0 || revision > vfs.latestRevision)
+    if(revision == null || revision <= 0 || revision > vfs.revisions.length)
         return vfs.latestRevision;
     return revision;
 }

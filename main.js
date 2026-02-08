@@ -45,27 +45,23 @@ switch(targetExtension){
         process.exit();
 }
 
-let revRegex = /revision=\d+/
 let revisionNumber = null;
-for(let operation of operations){
-    if(revRegex.test(operation)){
-        revisionNumber = Number.parseInt(operation.split('=')[1]);
-        break;
-    }
-}
 
 for(let operation of operations){
     switch(operation.split('=')[0]){
+        case 'revision':
+            revisionNumber = Number.parseInt(operation.split('=')[1]);
+            break;
         case 'stats':
             console.log('Stats Dump:\n', saveFile.getStats());
             break;
         case 'dump':
             console.log('Dumping filesystem...');
-            saveFile.dump(null, revisionNumber);
+            saveFile.dump(null, saveFile.getTimestampFromRevision(revisionNumber));
             console.log('Dumped filesystem');
             break;
         case 'owners':
-            let ownerData = saveFile.readMps('World/0/Owners.mps');
+            let ownerData = saveFile.readMps('World/0/Owners.mps', saveFile.getTimestampFromRevision(revisionNumber));
             let owners = [];
             for(let i=0; i<ownerData.UserIds.length; i++){
                 owners[i] = {
@@ -150,7 +146,7 @@ for(let operation of operations){
             let targetMps = operation.split('=')[1];
             if(targetMps) targetMps = targetMps.replaceAll(/(^"|"$)/g, '');
             if(!targetMps) console.log('Target required');
-            let mpsData = saveFile.readMps(targetMps);
+            let mpsData = saveFile.readMps(targetMps, saveFile.getTimestampFromRevision(revisionNumber));
             let mpsTargetPath = `dump/${saveFile.name}/${targetMps}`.replaceAll(/.mps$/g,'.json');
             fs.mkdirSync(path.dirname(mpsTargetPath), {recursive:true})
             fs.writeFileSync(mpsTargetPath, JSON.stringify(mpsData, null, 2));
@@ -159,7 +155,7 @@ for(let operation of operations){
             let targetSchema = operation.split('=')[1];
             if(targetSchema) targetSchema = targetSchema.replaceAll(/(^"|"$)/g, '');
             if(!targetSchema) console.log('Target required');
-            let schemaData = saveFile.readSchema(targetSchema);
+            let schemaData = saveFile.readSchema(targetSchema, saveFile.getTimestampFromRevision(revisionNumber));
             let schemaTargetPath = `dump/${saveFile.name}/${targetSchema}`.replaceAll(/.mps$/g,'.schema.json');
             fs.mkdirSync(path.dirname(schemaTargetPath), {recursive:true});
             fs.writeFileSync(schemaTargetPath, JSON.stringify({schema: schemaData}, null, 2));
