@@ -6,8 +6,6 @@ const path = require('path');
 const BrzRead = require('./brz').read;
 const BrdbRead = require('./brdb').read;
 
-const Brs = require('brs-js');
-
 let operations = ['stats'];
 let targetFile = './world.brdb';
 
@@ -33,12 +31,6 @@ switch(targetExtension){
     case '.brz':
         console.log('Reading BRZ...');
         saveFile = BrzRead(targetFile);
-        break;
-    case '.brs':
-        console.log('Reading BRS...');
-        saveFile = Brs.read(fs.readFileSync(targetFile));
-        fs.writeFileSync(`./dump/${path.basename(targetFile, '.brs')}.json`, JSON.stringify(saveFile, null, 4));
-        process.exit();
         break;
     default:
         console.log(`Incorrect filetype, must be .brdb or .brz:\n${targetFile}`);
