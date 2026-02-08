@@ -144,6 +144,7 @@ for(let operation of operations){
             let mpsTargetPath = `dump/${saveFile.name}/${targetMps}`.replaceAll(/.mps$/g,'.json');
             fs.mkdirSync(path.dirname(mpsTargetPath), {recursive:true})
             fs.writeFileSync(mpsTargetPath, JSON.stringify(mpsData, null, 2));
+            console.log('Wrote to ' + mpsTargetPath);
             break;
         case 'mpsschema':
             let targetSchema = operation.split('=')[1];
@@ -153,6 +154,7 @@ for(let operation of operations){
             let schemaTargetPath = `dump/${saveFile.name}/${targetSchema}`.replaceAll(/.mps$/g,'.schema.json');
             fs.mkdirSync(path.dirname(schemaTargetPath), {recursive:true});
             fs.writeFileSync(schemaTargetPath, JSON.stringify({schema: schemaData}, null, 2));
+            console.log('Wrote to ' + schemaTargetPath);
             break;
         case 'mapper':
             (() => {
@@ -202,6 +204,7 @@ for(let operation of operations){
                     }
                 }
                 fs.writeFileSync(`dump/${saveFile.name}_mapper.json`, JSON.stringify(data, null, 2));
+                console.log(`wrote to dump/${saveFile.name}_mapper.json`);
             })();
     }
 }
