@@ -60,10 +60,10 @@ for(let operation of operations){
             for(let i=0; i<ownerData.UserIds.length; i++){
                 owners[i] = {
                     userId:
-                        ownerData.UserIds[i].A.toString(16).padStart(2,'0') +
-                        ownerData.UserIds[i].B.toString(16).padStart(2,'0') +
-                        ownerData.UserIds[i].C.toString(16).padStart(2,'0') +
-                        ownerData.UserIds[i].D.toString(16).padStart(2,'0'),
+                        ownerData.UserIds[i].A.toString(16).padStart(8,'0') +
+                        ownerData.UserIds[i].B.toString(16).padStart(8,'0') +
+                        ownerData.UserIds[i].C.toString(16).padStart(8,'0') +
+                        ownerData.UserIds[i].D.toString(16).padStart(8,'0'),
                     userName: ownerData.UserNames[i],
                     displayName: ownerData.DisplayNames[i],
                     entityCount: ownerData.EntityCounts[i],
@@ -181,10 +181,11 @@ for(let operation of operations){
                 data.entities.PhysicsLockedFlags = unpackFlags(data.entities.PhysicsLockedFlags.Flags, entCount);
                 data.entities.PhysicsSleepingFlags = unpackFlags(data.entities.PhysicsSleepingFlags.Flags, entCount);
                 for(let i=0; i<data.owners.UserIds.length; i++){
-                    data.owners.UserIds[i] = (data.owners.UserIds[i].A.toString(16).padStart(2,'0') +
-                        data.owners.UserIds[i].B.toString(16).padStart(2,'0') +
-                        data.owners.UserIds[i].C.toString(16).padStart(2,'0') +
-                        data.owners.UserIds[i].D.toString(16).padStart(2,'0'))
+                    data.owners.UserIds[i] = (
+                        data.owners.UserIds[i].A.toString(16).padStart(8,'0') +
+                        data.owners.UserIds[i].B.toString(16).padStart(8,'0') +
+                        data.owners.UserIds[i].C.toString(16).padStart(8,'0') +
+                        data.owners.UserIds[i].D.toString(16).padStart(8,'0'))
                         .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/g, '$1-$2-$3-$4-$5');
                 }
                 data.chunks = [];
