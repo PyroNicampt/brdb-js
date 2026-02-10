@@ -282,6 +282,14 @@ for(let operation of operations){
                         data.owners.UserIds[i].D.toString(16).padStart(8,'0'))
                         .replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/g, '$1-$2-$3-$4-$5');
                 }
+                let tmp = 0;
+                for(let i in data.entities.ColorsAndAlphas){ //Swizzle the colors, since brickadia labels them wrong.
+                    for(let j in data.entities.ColorsAndAlphas[i]){
+                        tmp = data.entities.ColorsAndAlphas[i][j].R;
+                        data.entities.ColorsAndAlphas[i][j].R = data.entities.ColorsAndAlphas[i][j].B;
+                        data.entities.ColorsAndAlphas[i][j].B = tmp;
+                    }
+                }
                 data.chunks = [];
                 const chunkCoordRegex = /([0-9-]+)_([0-9-]+)_([0-9-]+).mps/;
                 for(let file of saveFile.files){
