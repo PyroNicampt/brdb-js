@@ -264,6 +264,7 @@ for(let operation of operations){
                     return unpack;
                 };
                 let data = {
+                    version: 1,
                     owners: saveFile.readMps('World/0/Owners.mps', timestamp),
                     entities: saveFile.readMps('World/0/Entities/Chunks/0_0_0.mps', timestamp),
                 };

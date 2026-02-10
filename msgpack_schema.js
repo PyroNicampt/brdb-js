@@ -13,7 +13,7 @@ const Errors = {
         return new Error(`Mismatch between schema and data at 0x${offset.toString(16)}: ${dataType} is incompatible with schema ${schemaType}`);
     },
     NotFound: (schemaType) => {
-        return new Error(`No Struct of name ${schemaType} found in schema`);
+        return new Error(`No Struct/Enum of name ${schemaType} found in schema`);
     },
     BadSchema: (keyName, schemaData) => {
         return new Error(`Bad schema data at "${keyName}":\n${JSON.stringify(schemaData, null, 4)}`);
@@ -26,42 +26,61 @@ const Errors = {
     }
 }
 
+// mpack, the library brickadia uses for serializing/deserializing msgpack doesn't check lower bounds on
+// unsigned integer types and writes *whatever* type it wants to. This is cursed and I hate it.
+// This goes against the point of having a standard.
+// To "support" this behavior, I've removed the lower bounds checks,
+// and just allow any msgpack integer to work with any integer type because fuckit.
 const typeCompat = {
     'bool': ['true', 'false'],
-    'u8': ['positive fixint', 'uint 8'],
-    'u16': ['positive fixint', 'uint 8', 'uint 16'],
-    'u32': ['positive fixint', 'uint 8', 'uint 16', 'uint 32'],
-    'u64': ['positive fixint', 'uint 8', 'uint 16', 'uint 32', 'uint 64'],
-    'i8': ['positive fixint', 'negative fixint', 'int 8', 'uint 8'],
-    'i16': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16'],
-    'i32': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 64'],
-    'i64': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 32', 'int 64'],
+    // 'u8': ['positive fixint', 'uint 8'],
+    // 'u16': ['positive fixint', 'uint 8', 'uint 16'],
+    // 'u32': ['positive fixint', 'uint 8', 'uint 16', 'uint 32'],
+    // 'u64': ['positive fixint', 'uint 8', 'uint 16', 'uint 32', 'uint 64'],
+    // 'i8': ['positive fixint', 'negative fixint', 'int 8', 'uint 8'],
+    // 'i16': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16'],
+    // 'i32': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 64'],
+    //'i64': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 32', 'int 64'],
+    'anyinteger': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 32', 'int 64', 'uint 64'],
     'f32': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'float 32'],
     'f64': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 32', 'float 32', 'float 64'],
     'str': ['fixstr', 'str 8', 'str 16', 'str 32'],
-    'object': ['i32'],
-    'class': ['i32'],
     
     'array': ['fixarray', 'array 16', 'array 32'],
     'flat array': ['bin 8', 'bin 16', 'bin 32'],
 };
+for(let type of ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64']){ //Thank you, mpack.
+    typeCompat[type] = typeCompat['anyinteger'];
+}
+typeCompat['object'] = typeCompat['i32'];
+typeCompat['class'] = typeCompat['i32'];
+
+export const extraDataModes = {
+    'Entity': {schemaTest:/World\/\d\/Entities\/ChunksShared\.schema/},
+    'Component': {schemaTest:/World\/\d\/Bricks\/ComponentsShared\.schema/}
+}
 
 const boundsCheckFunctions = {
     'i8': v => v >= -128 && v <= 127,
-    'u8': v => v >= 0 && v <= 255,
+    'u8': v => v <= 255,
     'i16': v => v >= -32768 && v <= 32767,
-    'u16': v => v >= 0 && v <= 65535,
+    'u16': v => v <= 65535,
     'i32': v => v >= -2147483648 && v <= 2147483647,
-    'u32': v => v >= 0 && v <= 4294967295,
+    'u32': v => v <= 4294967295,
     'i64': v => v >= -0x8000000000000000n && v <= 0x7ffffffffffffffn,
+    'u64': v => v <= 0xffffffffffffffffn,
+    'f32': v => v >= -Number.MAX_VALUE && v <= Number.MAX_VALUE, //this ain't right, but I don't feel like representing this in javascript as it has no concept of 32 bit floats.
+    'f64': v => v >= -Number.MAX_VALUE && v <= Number.MAX_VALUE,
 }
+boundsCheckFunctions['object'] = boundsCheckFunctions['i32'];
+boundsCheckFunctions['class'] = boundsCheckFunctions['i32'];
 
 /**
  * 
  * @param {Buffer} mpsData 
  * @param {Buffer} schemaData 
  */
-export function readFile(mpsData, schemaData){
+export function readFile(mpsData, schemaData, globalData, dataMode){
     if(!schemaData) throw new Error('No schema data provided for Mps Decode');
     let rawSchema = msgpack.decode(schemaData);
     if(!mpsData) return {schema: rawSchema};
@@ -88,6 +107,7 @@ export function readFile(mpsData, schemaData){
         if(schemaType && !typeCompat[schemaType].includes(mpsType)) throw Errors.Mismatch(ptr-1, schemaType, mpsType);
     };
     const boundcheck = (value, schemaType) => {
+        if(!boundsCheckFunctions[schemaType]) throw Errors.Unimplemented(`Bound check for ${schemaType}`);
         if(!boundsCheckFunctions[schemaType](value)) throw Errors.OutOfBounds(value, schemaType);
         return value;
     };
@@ -300,13 +320,17 @@ export function readFile(mpsData, schemaData){
             if(typeCompat[data]){
                 result = readSimpleType(data);
             }else if(enums[data]){
-                throw Errors.Unimplemented('enum');
+                let enumValue = readSimpleType('u64');
+                for(let enumOption in enums[data]){
+                    if(enums[data][enumOption] == enumValue){
+                        result = enumOption.replaceAll(/^.+::(.+)$/g, '$1');
+                        enumValue = null;
+                        break;
+                    }
+                }
+                if(enumValue != null) throw new Error(`Value ${enumValue} invalid for enum ${data}`);
             }else if(structs[data]){
-                //console.log(structs[data]);
                 result = readData(structs[data]);
-                /*for(let key in structs[data]){
-                    result[key] = readData(structs[data][key]);
-                }*/
             }else{
                 throw Errors.NotFound(data);
             }
@@ -342,7 +366,40 @@ export function readFile(mpsData, schemaData){
         return result;
     }
 
-    return {schema: rawSchema, data:readData(structs[soaKey])};
+    output = {schema: rawSchema, data:readData(structs[soaKey])};
+
+    if(globalData && dataMode){
+        switch(dataMode){
+            case 'Entity':
+                output.data.instances = [];
+                for(let typeCounter of output.data.TypeCounters){
+                    for(let i=0; i<typeCounter.NumEntities; i++){
+                        let instance = readData(structs[globalData.EntityDataClassNames[typeCounter.TypeIndex]]);
+                        instance.name = globalData.EntityTypeNames[typeCounter.TypeIndex];
+                        instance.class = globalData.EntityDataClassNames[typeCounter.TypeIndex];
+                        output.data.instances.push(instance);
+                    }
+                }
+                break;
+            case 'Component':
+                output.data.instances = [];
+                for(let typeCounter of output.data.ComponentTypeCounters){
+                    for(let i=0; i<typeCounter.NumInstances; i++){
+                        let instance = readData(structs[globalData.ComponentDataStructNames[typeCounter.TypeIndex]]);
+                        instance.name = globalData.ComponentTypeNames[typeCounter.TypeIndex];
+                        instance.class = globalData.ComponentDataStructNames[typeCounter.TypeIndex];
+                        output.data.instances.push(instance);
+                    }
+                }
+                break;
+            default:
+                console.log(`Unhandled data mode ${dataMode}`);
+                break;
+        }
+    }
+
+    if(ptr < mpsData.length) console.log(`WARNING: Read incomplete in ${soaKey}, read ${ptr-1}/${mpsData.length} - 0x${ptr.toString(16)}`);//out of',mpsData.length, 'in',soaKey);
+    return output;
 
     //console.log('OUTPUT:\n', output);
 }

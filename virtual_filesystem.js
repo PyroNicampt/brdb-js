@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 //const zstdEncoder = new Encoder(3);
 const zstdDecoder = new Decoder();
-import { readFile as mpsReader } from './msgpack_schema.js';
+import { readFile as mpsReader, extraDataModes} from './msgpack_schema.js';
 
 // .mps files in these folders usually are named by coordinates, and their .schema are named after the folder.
 const sharedSchemaFolderNames = [
@@ -20,6 +20,8 @@ export class VirtualFilesystem{
     files = [];
     revisions = [];
     latestRevision = 0;
+
+    globalData = [];
 
     //Override with a function to take in a single file object or a list of them and give them their blobs.
     loadBlobs = () => {throw new Error('loadBlobs not implemented for filetype')};
@@ -174,15 +176,29 @@ function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false){
         }
         if(!targetSchema) throw new Error(`No suitable .schema found for .mps: ${dirName + '/' + fileName}`);
         //console.log(`Found ${vfs.buildPath(targetMps.parent_id, targetMps.name)} and ${vfs.buildPath(targetSchema.parent_id, targetSchema.name)}\nReading...`);
+        
+        let globalData;
+        let dataMode;
+        if(dirName+'/'+fileName != 'World/0/GlobalData'){
+            let schemaPath = vfs.buildPath(targetSchema.parent_id, targetSchema.name);
+            for(let dataModeCheck in extraDataModes){
+                if(extraDataModes[dataModeCheck].schemaTest.test(schemaPath)){
+                    dataMode = dataModeCheck;
+                    globalData = getGlobalData(vfs, timestamp);
+                    break;
+                }
+            }
+        }
+        
         try{
             let result;
             if(getMps){
                 vfs.loadBlobs([targetMps, targetSchema]);
-                result = mpsReader(targetMps.blob.content, targetSchema.blob.content);
+                result = mpsReader(targetMps.blob.content, targetSchema.blob.content, globalData, dataMode);
                 if(returnFiles) result.files = {mps:targetMps, schema:targetSchema};
             }else{
                 vfs.loadBlobs([targetSchema]);
-                result = mpsReader(null, targetSchema.blob.content);
+                result = mpsReader(null, targetSchema.blob.content, globalData, dataMode);
                 if(returnFiles) result.files = {schema:targetSchema};
             }
             return result;
@@ -192,6 +208,24 @@ function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false){
         }
     }
     throw new Error(`${dirName + '/' + fileName} was not found in virtual filesystem`);
+}
+
+function getGlobalData(vfs, timestamp){
+    if(vfs.globalData.length == 0){
+        vfs.globalData = vfs.findFiles('GlobalData.mps', 'World/0');
+        if(!vfs.globalData) throw new Error('GlobalData.mps not found!');
+        vfs.globalData.sort((a, b) => {
+            a.created_at - b.created_at;
+        });
+    }
+    for(let gData of vfs.globalData){
+        if(withinTimestamp(gData, timestamp)){
+            vfs.loadBlobs(gData);
+            if(!gData.blob.converted)
+                gData.blob.converted = vfs.readMps(gData);
+            return gData.blob.converted;
+        }
+    }
 }
 
 function validateRevision(vfs, revision){
