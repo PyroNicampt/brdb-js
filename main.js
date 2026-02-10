@@ -1,10 +1,11 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
 
-const BrzRead = require('./brz').read;
-const BrdbRead = require('./brdb').read;
+import {read as BrzRead} from './brz.js';
+import {read as BrdbRead} from './brdb.js';
+import { withinTimestamp } from './virtual_filesystem.js';
 
 let operations = ['stats'];
 let targetFile = './world.brdb';
@@ -57,15 +58,13 @@ for(let operation of operations){
                 if(fs.existsSync(outputFolder)) fs.rmSync(outputFolder, {recursive:true});
                 for(let folder of saveFile.folders){
                     if(!folder) continue;
-                    if(folder.deleted_at != null && folder.deleted_at <= timestamp) continue;
-                    if(folder.created_at != null && folder.created_at > timestamp) continue;
+                    if(!withinTimestamp(folder, timestamp)) continue;
                     fs.mkdirSync(outputFolder + '/' + saveFile.buildPath(folder.parent_id, folder.name), {recursive:true});
                 }
                 let dumpFiles = [];
                 for(let file of saveFile.files){
                     if(!file) continue;
-                    if(file.deleted_at != null && file.deleted_at <= timestamp) continue;
-                    if(file.created_at != null && file.created_at > timestamp) continue;
+                    if(!withinTimestamp(file, timestamp)) continue;
                     dumpFiles.push(file);
                 }
                 saveFile.loadBlobs(dumpFiles);
@@ -89,16 +88,14 @@ for(let operation of operations){
                 console.log('Gathering files...');
                 for(let folder of saveFile.folders){
                     if(!folder) continue;
-                    if(folder.deleted_at != null && folder.deleted_at <= timestamp) continue;
-                    if(folder.created_at != null && folder.created_at > timestamp) continue;
+                    if(!withinTimestamp(folder, timestamp)) continue;
                     fs.mkdirSync(outputFolder + '/' + saveFile.buildPath(folder.parent_id, folder.name), {recursive:true});
                 }
                 let rawDumpFiles = [];
                 let mpsDumpFiles = [];
                 for(let file of saveFile.files){
                     if(!file) continue;
-                    if(file.deleted_at != null && file.deleted_at <= timestamp) continue;
-                    if(file.created_at != null && file.created_at > timestamp) continue;
+                    if(!withinTimestamp(file, timestamp)) continue;
                     if(file.name.endsWith('.mps'))
                         mpsDumpFiles.push(file);
                     else if(!file.name.endsWith('.schema'))

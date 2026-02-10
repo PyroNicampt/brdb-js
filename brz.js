@@ -1,13 +1,13 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-const {Encoder, Decoder} = require('@toondepauw/node-zstd');
+import fs from 'node:fs';
+import path from 'node:path';
+import {Encoder, Decoder} from '@toondepauw/node-zstd';
 //const zstdEncoder = new Encoder(3);
 const zstdDecoder = new Decoder();
-const VirtualFilesystem = require('./virtual_filesystem').VirtualFilesystem;
+import { VirtualFilesystem } from './virtual_filesystem.js';
 
-function read(targetFile){
+export function read(targetFile){
     let vfs = new VirtualFilesystem();
     vfs.name = path.basename(targetFile, '.brz');
 
@@ -105,5 +105,3 @@ function read(targetFile){
 
     return vfs;
 }
-
-exports.read = read;

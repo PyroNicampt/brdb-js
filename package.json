@@ -8,6 +8,7 @@
   "author": "PyroNicampt",
   "license": "ISC",
   "description": "",
+  "type": "module",
   "dependencies": {
     "@msgpack/msgpack": "^3.1.2",
     "@toondepauw/node-zstd": "^1.2.0",

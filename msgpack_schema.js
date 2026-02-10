@@ -1,6 +1,6 @@
 'use strict';
 
-const msgpack = require('@msgpack/msgpack');
+import msgpack from '@msgpack/msgpack';
 
 const Errors = {
     Mismatch: (offset, expectedData, recievedData, extraInfo) => {
@@ -61,7 +61,7 @@ const boundsCheckFunctions = {
  * @param {Buffer} mpsData 
  * @param {Buffer} schemaData 
  */
-function readFile(mpsData, schemaData){
+export function readFile(mpsData, schemaData){
     if(!schemaData) throw new Error('No schema data provided for Mps Decode');
     let rawSchema = msgpack.decode(schemaData);
     if(!mpsData) return {schema: rawSchema};
@@ -347,7 +347,7 @@ function readFile(mpsData, schemaData){
     //console.log('OUTPUT:\n', output);
 }
 
-function readFileRaw(mpsData, schemaData){
+export function readFileRaw(mpsData, schemaData){
     let rawSchema = msgpack.decode(schemaData);
     //console.log('SCHEMA:\n', JSON.stringify(rawSchema, null, 2));
 
@@ -359,6 +359,3 @@ function readFileRaw(mpsData, schemaData){
     //console.log('DATA:\n', JSON.stringify(data));
     return {schema:rawSchema, data:data};
 }
-
-exports.readFile = readFile;
-exports.readFileRaw = readFileRaw;

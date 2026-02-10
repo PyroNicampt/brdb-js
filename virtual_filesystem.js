@@ -1,11 +1,11 @@
 'use strict';
 
-const {Encoder, Decoder} = require('@toondepauw/node-zstd');
-const fs = require('fs');
-const path = require('path');
+import { Encoder, Decoder } from '@toondepauw/node-zstd';
+import fs from 'node:fs';
+import path from 'node:path';
 //const zstdEncoder = new Encoder(3);
 const zstdDecoder = new Decoder();
-const mpsReader = require('./msgpack_schema').readFile;
+import { readFile as mpsReader } from './msgpack_schema.js';
 
 // .mps files in these folders usually are named by coordinates, and their .schema are named after the folder.
 const sharedSchemaFolderNames = [
@@ -14,7 +14,7 @@ const sharedSchemaFolderNames = [
     'Wires',
 ];
 
-class VirtualFilesystem{
+export class VirtualFilesystem{
     name = '';
     folders = [];
     files = [];
@@ -44,7 +44,7 @@ class VirtualFilesystem{
         if(!timestamp) timestamp = this.revisions[this.latestRevision].created_at;
 
         for(let i=results.length-1; i>=0; i--){
-            if((results[i].deleted_at == null || results[i].deleted_at > timestamp) && results[i].created_at <= timestamp){
+            if(withinTimestamp(results[i], timestamp)){
                 return results[i];
             }
         }
@@ -212,4 +212,6 @@ function rotateSoA(mpsData){
     return newArray;
 }
 
-exports.VirtualFilesystem = VirtualFilesystem;
+export function withinTimestamp(item, timestamp){
+    return (item.created_at == null || item.created_at <= timestamp) && (item.deleted_at == null || item.deleted_at > timestamp);
+}
