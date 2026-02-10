@@ -6,7 +6,6 @@ const path = require('path');
 //const zstdEncoder = new Encoder(3);
 const zstdDecoder = new Decoder();
 const mpsReader = require('./msgpack_schema').readFile;
-const mpsReaderRaw = require('./msgpack_schema').readFileRaw;
 
 // .mps files in these folders usually are named by coordinates, and their .schema are named after the folder.
 const sharedSchemaFolderNames = [
@@ -39,6 +38,9 @@ class VirtualFilesystem{
     findFile(query, path, timestamp){
         let results = this.findFiles(query, path);
         if(!results) return null;
+        results.sort((a, b) => {
+            a.created_at - b.created_at;
+        });
         if(!timestamp) timestamp = this.revisions[this.latestRevision].created_at;
 
         for(let i=results.length-1; i>=0; i--){
@@ -60,45 +62,27 @@ class VirtualFilesystem{
                     if(commonSkipConditions(file)) continue;
                     if(file.name == query) results.push(file);
                 }
+                break;
             case 'number':
                 for(let file of this.files){
                     if(commonSkipConditions(file)) continue;
                     if(file.file_id == query) results.push(file);
                 }
+                break;
+            case 'object':
+                if(!query.test) break;
+                for(let file of this.files){
+                    if(commonSkipConditions(file)) continue;
+                    if(query.test(file.name)) results.push(file);
+                }
+                break;
         }
-        results.sort((a, b) => {
-            a.created_at - b.created_at;
-        });
         return results;
     }
     processBlob(blob){
         if(blob.compression == 0) return blob;
         blob.content = zstdDecoder.decodeSync(blob.content);
         return blob;
-    }
-    dump(name, timestamp){
-        if(!name) name = this.name;
-
-        let worldFolder = `./dump/${name}`;
-        if(fs.existsSync(worldFolder)) fs.rmSync(worldFolder, {recursive:true});
-        for(let folder of this.folders){
-            if(!folder) continue;
-            if(folder.deleted_at != null && folder.deleted_at <= timestamp) continue;
-            if(folder.created_at != null && folder.created_at > timestamp) continue;
-            fs.mkdirSync(worldFolder + '/' + this.buildPath(folder.parent_id, folder.name), {recursive:true});
-        }
-        let dumpFiles = [];
-        for(let file of this.files){
-            if(!file) continue;
-            if(file.deleted_at != null && file.deleted_at <= timestamp) continue;
-            if(file.created_at != null && file.created_at > timestamp) continue;
-            dumpFiles.push(file);
-        }
-        this.loadBlobs(dumpFiles);
-        for(let file of dumpFiles){            
-            let path = this.buildPath(file.parent_id, file.name);
-            fs.writeFileSync(worldFolder + '/' + path, file.blob.content, {encoding: null, flag: 'w'});
-        }
     }
     getStats(){
         return {
@@ -121,31 +105,27 @@ class VirtualFilesystem{
         }
         return finalPath;
     }
-    dumpSchema(){
-        let schemaFiles = [];
-        for(let file of this.files){
-            if(!file) continue;
-            if(file.name.endsWith('.schema')){
-                schemaFiles.push(file);
-            }
-        }
-        this.loadBlobs(schemaFiles);
-        for(let file of schemaFiles){
-            console.log('\n\n',file.name,'\n');
-            console.log(JSON.stringify(mpsReaderRaw(null, file.blob.content).schema, null, 2));
-        }
+
+    readMps(mpsFile, timestamp, returnFile){
+        let result = grabMpsSchema(this, mpsFile, timestamp, true, returnFile);
+        if(returnFile) return {
+            file: result.files.mps,
+            data: result.data
+        };
+        return result.data;
     }
 
-    readMps(mpsFile, timestamp){
-        return grabMpsSchema(this, mpsFile, timestamp).data;
+    readSchema(mpsFile, timestamp, returnFile){
+        let result = grabMpsSchema(this, mpsFile, timestamp, false, returnFile);
+        if(returnFile) return {
+            file: result.files.schema,
+            data: result.schema
+        };
+        return result.schema;
     }
 
-    readSchema(mpsFile, timestamp){
-        return grabMpsSchema(this, mpsFile, timestamp, false).schema;
-    }
-
-    readMpsAndSchema(mpsFile, timestamp){
-        return grabMpsSchema(this, mpsFile, timestamp, true);
+    readMpsAndSchema(mpsFile, timestamp, returnFiles){
+        return grabMpsSchema(this, mpsFile, timestamp, true, returnFiles);
     }
 
     getTimestampFromRevision(revision){
@@ -153,13 +133,23 @@ class VirtualFilesystem{
     }
 }
 
-function grabMpsSchema(vfs, mpsFile, timestamp, getMps = true){
-    if(!mpsFile.endsWith('.mps'))
-        throw new Error(`${mpsFile} is not an .mps file`);
-    const dirName = path.dirname(mpsFile);
-    const fileName = path.basename(mpsFile, '.mps');
+function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false){
+    let targetMps;
+    let dirName;
+    let fileName;
+    if(typeof(mpsFile) == 'string'){
+        if(!mpsFile.endsWith('.mps'))
+            throw new Error(`${mpsFile} is not an .mps file`);
+        dirName = path.dirname(mpsFile);
+        fileName = path.basename(mpsFile, '.mps');
+    
+        targetMps = vfs.findFile(fileName+'.mps', dirName, timestamp);
+    }else if(typeof(mpsFile) == 'object'){
+        targetMps = mpsFile;
+        dirName = vfs.buildPath(targetMps.parent_id, '');
+        fileName = targetMps.name.replaceAll(/\.mps$/g, '');
+    }
 
-    let targetMps = vfs.findFile(fileName+'.mps', dirName, timestamp);
     if(targetMps){
         let targetSchema = vfs.findFile(fileName+'.schema', dirName, targetMps.created_at);
         if(!targetSchema && targetMps.parent_id){
@@ -182,22 +172,26 @@ function grabMpsSchema(vfs, mpsFile, timestamp, getMps = true){
                 if(iterations > 255) throw new Error(`Too many levels deep in folder id ${targetMps.parent_id}`);
             }
         }
-        if(!targetSchema) throw new Error(`No suitable .schema found for .mps: ${mpsFile}`);
-        console.log(`Found ${vfs.buildPath(targetMps.parent_id, targetMps.name)} and ${vfs.buildPath(targetSchema.parent_id, targetSchema.name)}\nReading...`);
+        if(!targetSchema) throw new Error(`No suitable .schema found for .mps: ${dirName + '/' + fileName}`);
+        //console.log(`Found ${vfs.buildPath(targetMps.parent_id, targetMps.name)} and ${vfs.buildPath(targetSchema.parent_id, targetSchema.name)}\nReading...`);
         try{
+            let result;
             if(getMps){
                 vfs.loadBlobs([targetMps, targetSchema]);
-                return mpsReader(targetMps.blob.content, targetSchema.blob.content);
+                result = mpsReader(targetMps.blob.content, targetSchema.blob.content);
+                if(returnFiles) result.files = {mps:targetMps, schema:targetSchema};
             }else{
                 vfs.loadBlobs([targetSchema]);
-                return mpsReader(null, targetSchema.blob.content);
+                result = mpsReader(null, targetSchema.blob.content);
+                if(returnFiles) result.files = {schema:targetSchema};
             }
+            return result;
         }catch(e){
-            console.warn(`Failed to read ${mpsFile}`);
+            console.warn(`Failed to read ${dirName + '/' + fileName}`);
             throw e;
         }
     }
-    throw new Error(`${mpsFile} was not found in virtual filesystem`);
+    throw new Error(`${dirName + '/' + fileName} was not found in virtual filesystem`);
 }
 
 function validateRevision(vfs, revision){

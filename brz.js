@@ -95,7 +95,7 @@ function read(targetFile){
     }
 
     vfs.loadBlobs = () => {
-        console.log('TODO: Selective loading of blobs in .brz not yet implemented.');
+        //console.log('TODO: Selective loading of blobs in .brz not yet implemented.');
     }
     vfs.addRevision({
         revision_id: 1,

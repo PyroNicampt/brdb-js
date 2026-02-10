@@ -23,7 +23,9 @@ Selects a specific revision to perform operations on.
 - `stats`
 Shows the filesystem statistics of the save
 - `dump`
-Dumps the contents of the save to a folder.
+Dumps the contents of the save to a folder, in a human readable format.
+- `dumpraw`
+Dumps the raw decompressed contents to a folder.
 - `owners`
 Lists statistics saved per-user like brick count, entity count, components, and wires, in order of most to least
 - `bundle`

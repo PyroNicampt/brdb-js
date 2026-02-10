@@ -20,6 +20,9 @@ const Errors = {
     },
     Invalid: (msgpackType) => {
         return new Error(`${msgpack} is invalid for mps`);
+    },
+    OutOfBounds: (value, type) => {
+        return new Error(`Value is too big for ${type}: 0x${value.toString(16)}`);
     }
 }
 
@@ -29,9 +32,9 @@ const typeCompat = {
     'u16': ['positive fixint', 'uint 8', 'uint 16'],
     'u32': ['positive fixint', 'uint 8', 'uint 16', 'uint 32'],
     'u64': ['positive fixint', 'uint 8', 'uint 16', 'uint 32', 'uint 64'],
-    'i8': ['positive fixint', 'negative fixint', 'int 8'],
-    'i16': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16'],
-    'i32': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32'],
+    'i8': ['positive fixint', 'negative fixint', 'int 8', 'uint 8'],
+    'i16': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16'],
+    'i32': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 64'],
     'i64': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 32', 'int 64'],
     'f32': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'float 32'],
     'f64': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 32', 'float 32', 'float 64'],
@@ -42,6 +45,16 @@ const typeCompat = {
     'array': ['fixarray', 'array 16', 'array 32'],
     'flat array': ['bin 8', 'bin 16', 'bin 32'],
 };
+
+const boundsCheckFunctions = {
+    'i8': v => v >= -128 && v <= 127,
+    'u8': v => v >= 0 && v <= 255,
+    'i16': v => v >= -32768 && v <= 32767,
+    'u16': v => v >= 0 && v <= 65535,
+    'i32': v => v >= -2147483648 && v <= 2147483647,
+    'u32': v => v >= 0 && v <= 4294967295,
+    'i64': v => v >= -0x8000000000000000n && v <= 0x7ffffffffffffffn,
+}
 
 /**
  * 
@@ -58,7 +71,15 @@ function readFile(mpsData, schemaData){
     let enums = rawSchema[0];
     let structs = rawSchema[1];
 
-    let soaKey = Object.keys(structs)[Object.keys(structs).length-1];
+    let soaKey;
+    // = Object.keys(structs)[Object.keys(structs).length-1];
+    for(let key in structs){
+        if(key.endsWith('SoA')){
+            soaKey = key;
+            break;
+        }
+    }
+    if(!soaKey) throw new Error('No Structure of Arrays key found');
 
     let output = {};
     let ptr = 0; // Data Pointer, where in the .mps file we're currently reading from.
@@ -66,6 +87,11 @@ function readFile(mpsData, schemaData){
     const typecheck = (schemaType, mpsType) => {
         if(schemaType && !typeCompat[schemaType].includes(mpsType)) throw Errors.Mismatch(ptr-1, schemaType, mpsType);
     };
+    const boundcheck = (value, schemaType) => {
+        if(!boundsCheckFunctions[schemaType](value)) throw Errors.OutOfBounds(value, schemaType);
+        return value;
+    };
+
     const readSimpleType = type => {
         //console.log('0x'+ptr.toString(16).padStart(2,'0'), type);
         if(type && !typeCompat[type]) throw new Error(`Unknown schema type ${type}`);
@@ -74,7 +100,7 @@ function readFile(mpsData, schemaData){
         let size = 0;
         if(mpsType <= 0x7f){
             typecheck(type, 'positive fixint');
-            result = mpsType;
+            result = boundcheck(mpsType, type);
         }else if(mpsType <= 0x8f){
             throw Errors.Unimplemented('read fixmap');
         }else if(mpsType <= 0x9f){
@@ -127,35 +153,35 @@ function readFile(mpsData, schemaData){
         }else if(mpsType == 0xcc){
             typecheck(type, 'uint 8');
             size = 1;
-            result = mpsData.readUInt8(ptr);
+            result = boundcheck(mpsData.readUInt8(ptr), type);
         }else if(mpsType == 0xcd){
             typecheck(type, 'uint 16');
             size = 2;
-            result = mpsData.readUInt16BE(ptr);
+            result = boundcheck(mpsData.readUInt16BE(ptr), type);
         }else if(mpsType == 0xce){
             typecheck(type, 'uint 32');
             size = 4;
-            result = mpsData.readUInt32BE(ptr);
+            result = boundcheck(mpsData.readUInt32BE(ptr), type);
         }else if(mpsType == 0xcf){
             typecheck(type, 'uint 64');
             size = 8;
-            result = mpsData.readBigUInt64BE(ptr);
+            result = boundcheck(mpsData.readBigUInt64BE(ptr), type);
         }else if(mpsType == 0xd0){
             typecheck(type, 'int 8');
             size = 1;
-            result = mpsData.readInt8(ptr);
+            result = boundcheck(mpsData.readInt8(ptr), type);
         }else if(mpsType == 0xd1){
             typecheck(type, 'int 16');
             size = 2;
-            result = mpsData.readInt16BE(ptr);
+            result = boundcheck(mpsData.readInt16BE(ptr), type);
         }else if(mpsType == 0xd2){
             typecheck(type, 'int 32');
             size = 4;
-            result = mpsData.readInt32BE(ptr);
+            result = boundcheck(mpsData.readInt32BE(ptr), type);
         }else if(mpsType == 0xd3){
             typecheck(type, 'int 64');
             size = 8;
-            result = mpsData.readBigInt64BE(ptr);
+            result = boundcheck(mpsData.readBigInt64BE(ptr), type);
         }else if(mpsType == 0xd4){
             throw Errors.Invalid('fixext 1');
         }else if(mpsType == 0xd5){
@@ -194,7 +220,7 @@ function readFile(mpsData, schemaData){
             throw Errors.Unimplemented('read map 32');
         }else{
             typecheck(type, 'negative fixint');
-            result = -(mpsType & 0x1f);
+            result = boundcheck(-(mpsType & 0x1f), type);
         }
         ptr += size;
         return result;

@@ -38,7 +38,7 @@ switch(targetExtension){
 }
 
 let revisionNumber = null;
-let timestamp = null;
+let timestamp = saveFile.getTimestampFromRevision(null);
 
 for(let operation of operations){
     switch(operation.split('=')[0]){
@@ -49,112 +49,206 @@ for(let operation of operations){
         case 'stats':
             console.log('Stats Dump:\n', saveFile.getStats());
             break;
+        case 'dumpraw':
+            (() => {
+                console.log(`Dumping ${saveFile.name}'s raw filesystem...`);
+                let outputFolder = `./dump/raw/${saveFile.name}`;
+
+                if(fs.existsSync(outputFolder)) fs.rmSync(outputFolder, {recursive:true});
+                for(let folder of saveFile.folders){
+                    if(!folder) continue;
+                    if(folder.deleted_at != null && folder.deleted_at <= timestamp) continue;
+                    if(folder.created_at != null && folder.created_at > timestamp) continue;
+                    fs.mkdirSync(outputFolder + '/' + saveFile.buildPath(folder.parent_id, folder.name), {recursive:true});
+                }
+                let dumpFiles = [];
+                for(let file of saveFile.files){
+                    if(!file) continue;
+                    if(file.deleted_at != null && file.deleted_at <= timestamp) continue;
+                    if(file.created_at != null && file.created_at > timestamp) continue;
+                    dumpFiles.push(file);
+                }
+                saveFile.loadBlobs(dumpFiles);
+                for(let file of dumpFiles){
+                    let path = saveFile.buildPath(file.parent_id, file.name);
+                    fs.writeFileSync(outputFolder + '/' + path, file.blob.content, {encoding:null, flag:'w'});
+                }
+
+                console.log(`Dumped filesystem to ${outputFolder}`);
+            })();
+            break;
         case 'dump':
-            console.log('Dumping filesystem...');
-            saveFile.dump(null, timestamp);
-            console.log('Dumped filesystem');
+            (() => {
+                console.log(`Converting and Dumping ${saveFile.name}'s filesystem...`);
+                let outputFolder = `./dump/converted/${saveFile.name}`;
+
+                if(fs.existsSync(outputFolder)){
+                    console.log('Cleaning existing files...');
+                    fs.rmSync(outputFolder, {recursive:true});
+                }
+                console.log('Gathering files...');
+                for(let folder of saveFile.folders){
+                    if(!folder) continue;
+                    if(folder.deleted_at != null && folder.deleted_at <= timestamp) continue;
+                    if(folder.created_at != null && folder.created_at > timestamp) continue;
+                    fs.mkdirSync(outputFolder + '/' + saveFile.buildPath(folder.parent_id, folder.name), {recursive:true});
+                }
+                let rawDumpFiles = [];
+                let mpsDumpFiles = [];
+                for(let file of saveFile.files){
+                    if(!file) continue;
+                    if(file.deleted_at != null && file.deleted_at <= timestamp) continue;
+                    if(file.created_at != null && file.created_at > timestamp) continue;
+                    if(file.name.endsWith('.mps'))
+                        mpsDumpFiles.push(file);
+                    else if(!file.name.endsWith('.schema'))
+                        rawDumpFiles.push(file);
+                }
+                saveFile.loadBlobs(rawDumpFiles);
+                let dumpCounter = 0;
+                let totalCount = rawDumpFiles.length + mpsDumpFiles.length;
+                let dumpProgressReport = () => {
+                    dumpCounter++;
+                    if(dumpCounter % 100 == 0){
+                        console.log(`Converted ${dumpCounter}/${totalCount} > ${Math.floor(dumpCounter/totalCount * 1000)/10}%`);
+                    }
+                };
+
+                for(let file of rawDumpFiles){
+                    let path = saveFile.buildPath(file.parent_id, file.name);
+                    fs.writeFileSync(outputFolder + '/' + path, file.blob.content, {encoding:null, flag:'w'});
+                    dumpProgressReport();
+                }
+                for(let file of mpsDumpFiles){
+                    let data = saveFile.readMpsAndSchema(file, timestamp, true);
+                    fs.writeFileSync(
+                        outputFolder + '/' + saveFile.buildPath(data.files.mps.parent_id, data.files.mps.name) + '.json',
+                        stringifyPlus(data.data, null, 2),
+                        {encoding:'utf8', flag:'w'}
+                    );
+                    /*let schemaPath = outputFolder + '/' + saveFile.buildPath(data.files.schema.parent_id, data.files.schema.name) + '_' + data.files.schema.created_at + '.json';
+                    if(fs.existsSync(schemaPath)) continue;
+                    fs.writeFileSync(
+                        schemaPath,
+                        stringifyPlus(data.schema, null, 2),
+                        {encoding:'utf8', flag:'w'}
+                    );*/
+                    dumpProgressReport();
+                }
+                console.log(`Converted and Dumped filesystem to ${outputFolder}`);
+            })();
             break;
         case 'owners':
-            let ownerData = saveFile.readMps('World/0/Owners.mps', timestamp);
-            let owners = [];
-            for(let i=0; i<ownerData.UserIds.length; i++){
-                owners[i] = {
-                    userId:
-                        ownerData.UserIds[i].A.toString(16).padStart(8,'0') +
-                        ownerData.UserIds[i].B.toString(16).padStart(8,'0') +
-                        ownerData.UserIds[i].C.toString(16).padStart(8,'0') +
-                        ownerData.UserIds[i].D.toString(16).padStart(8,'0'),
-                    userName: ownerData.UserNames[i],
-                    displayName: ownerData.DisplayNames[i],
-                    entityCount: ownerData.EntityCounts[i],
-                    brickCount: ownerData.BrickCounts[i],
-                    componentCount: ownerData.ComponentCounts[i],
-                    wireCount: ownerData.WireCounts[i],
+            (() => {
+                let ownerData = saveFile.readMps('World/0/Owners.mps', timestamp);
+                let owners = [];
+                for(let i=0; i<ownerData.UserIds.length; i++){
+                    owners[i] = {
+                        userId:
+                            ownerData.UserIds[i].A.toString(16).padStart(8,'0') +
+                            ownerData.UserIds[i].B.toString(16).padStart(8,'0') +
+                            ownerData.UserIds[i].C.toString(16).padStart(8,'0') +
+                            ownerData.UserIds[i].D.toString(16).padStart(8,'0'),
+                        userName: ownerData.UserNames[i],
+                        displayName: ownerData.DisplayNames[i],
+                        entityCount: ownerData.EntityCounts[i],
+                        brickCount: ownerData.BrickCounts[i],
+                        componentCount: ownerData.ComponentCounts[i],
+                        wireCount: ownerData.WireCounts[i],
+                    };
+                    owners[i].userId = owners[i].userId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/g, '$1-$2-$3-$4-$5');
+                    owners[i].formattedName = `${owners[i].displayName} (${owners[i].userName}) [${owners[i].userId}]`;
+                }
+    
+                let totals = {
+                    entityCount:0,
+                    brickCount:0,
+                    componentCount:0,
+                    wireCount:0
                 };
-                owners[i].userId = owners[i].userId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/g, '$1-$2-$3-$4-$5');
-                owners[i].formattedName = `${owners[i].displayName} (${owners[i].userName}) [${owners[i].userId}]`;
-            }
-
-            let totals = {
-                entityCount:0,
-                brickCount:0,
-                componentCount:0,
-                wireCount:0
-            };
-            owners.sort((a,b) => b.entityCount - a.entityCount);
-            console.log('\nMost Entities:')
-            for(let user of owners){
-                totals.entityCount += user.entityCount;
-                //if(user.entityCount < 10) continue;
-                if(user.entityCount == 0) break;
-                console.log(`${user.entityCount} > ${user.formattedName}`);
-            }
-            owners.sort((a,b) => b.componentCount - a.componentCount);
-            console.log('\nMost Components:')
-            for(let user of owners){
-                totals.componentCount += user.componentCount;
-                //if(user.componentCount < 500) continue;
-                if(user.componentCount == 0) break;
-                console.log(`${user.componentCount} > ${user.formattedName}`);
-            }
-            owners.sort((a,b) => b.wireCount - a.wireCount);
-            console.log('\nMost Wires:')
-            for(let user of owners){
-                totals.wireCount += user.wireCount;
-                //if(user.wireCount < 500) continue;
-                if(user.wireCount == 0) break;
-                console.log(`${user.wireCount} > ${user.formattedName}`);
-            }
-            owners.sort((a,b) => b.brickCount - a.brickCount);
-            console.log('\nMost Bricks:')
-            for(let user of owners){
-                totals.brickCount += user.brickCount;
-                //if(user.brickCount < 1000) continue;
-                if(user.brickCount == 0) break;
-                console.log(`${user.brickCount} > ${user.formattedName}`);
-            }
-            console.log(`\nTotals:\n Entities: ${totals.entityCount}\n Components: ${totals.componentCount}\n Wires: ${totals.wireCount}\n Bricks: ${totals.brickCount}`);
+                owners.sort((a,b) => b.entityCount - a.entityCount);
+                console.log('\nMost Entities:')
+                for(let user of owners){
+                    totals.entityCount += user.entityCount;
+                    //if(user.entityCount < 10) continue;
+                    if(user.entityCount == 0) break;
+                    console.log(`${user.entityCount} > ${user.formattedName}`);
+                }
+                owners.sort((a,b) => b.componentCount - a.componentCount);
+                console.log('\nMost Components:')
+                for(let user of owners){
+                    totals.componentCount += user.componentCount;
+                    //if(user.componentCount < 500) continue;
+                    if(user.componentCount == 0) break;
+                    console.log(`${user.componentCount} > ${user.formattedName}`);
+                }
+                owners.sort((a,b) => b.wireCount - a.wireCount);
+                console.log('\nMost Wires:')
+                for(let user of owners){
+                    totals.wireCount += user.wireCount;
+                    //if(user.wireCount < 500) continue;
+                    if(user.wireCount == 0) break;
+                    console.log(`${user.wireCount} > ${user.formattedName}`);
+                }
+                owners.sort((a,b) => b.brickCount - a.brickCount);
+                console.log('\nMost Bricks:')
+                for(let user of owners){
+                    totals.brickCount += user.brickCount;
+                    //if(user.brickCount < 1000) continue;
+                    if(user.brickCount == 0) break;
+                    console.log(`${user.brickCount} > ${user.formattedName}`);
+                }
+                console.log(`\nTotals for ${saveFile.name}:\n Entities: ${totals.entityCount}\n Components: ${totals.componentCount}\n Wires: ${totals.wireCount}\n Bricks: ${totals.brickCount}`);
+            })();
             break;
         case 'bundle':
-            const bundleFile = saveFile.findFile('Bundle.json', 'Meta', null);
-            if(!bundleFile){
-                console.log('No Bundle Found!');
-                break;
-            }
-            const bundle = JSON.parse(bundleFile.blob.content.toString());
-            console.log(bundle);
+            (() => {
+                const bundleFile = saveFile.findFile('Bundle.json', 'Meta', null);
+                if(!bundleFile){
+                    console.log('No Bundle Found!');
+                    return;
+                }
+                const bundle = JSON.parse(bundleFile.blob.content.toString());
+                console.log(bundle);
+            })();
             break;
         case 'description':
-            const bundleFile2 = saveFile.findFile('Bundle.json', 'Meta', null);
-            if(!bundleFile2){
-                console.log('No Bundle Found!');
-                break;
-            }
-            const bundle2 = JSON.parse(bundleFile2.blob.content.toString());
-            console.log('Name');
-            console.log(bundle2.name);
-            console.log('Description:');
-            console.log(bundle2.description);
+            (() => {
+                const bundleFile = saveFile.findFile('Bundle.json', 'Meta', null);
+                if(!bundleFile){
+                    console.log('No Bundle Found!');
+                    return;
+                }
+                const bundle = JSON.parse(bundleFile.blob.content.toString());
+                console.log('Name');
+                console.log(bundle.name);
+                console.log('Description:');
+                console.log(bundle.description);
+            })();
             break;
         case 'mps':
-            let targetMps = operation.split('=')[1];
-            if(targetMps) targetMps = targetMps.replaceAll(/(^"|"$)/g, '');
-            if(!targetMps) console.log('Target required');
-            let mpsData = saveFile.readMps(targetMps, timestamp);
-            let mpsTargetPath = `dump/${saveFile.name}/${targetMps}`.replaceAll(/.mps$/g,'.json');
-            fs.mkdirSync(path.dirname(mpsTargetPath), {recursive:true})
-            fs.writeFileSync(mpsTargetPath, JSON.stringify(mpsData, null, 2));
-            console.log('Wrote to ' + mpsTargetPath);
+            (() => {
+                let target = operation.split('=')[1];
+                if(target) target = target.replaceAll(/(^"|"$)/g, '');
+                if(!target) console.log('Target required');
+                let data = saveFile.readMps(target, timestamp);
+                let targetPath = `dump/converted/${saveFile.name}/${target}` + '.json';
+                fs.mkdirSync(path.dirname(targetPath), {recursive:true});
+                fs.writeFileSync(targetPath, stringifyPlus(data, null, 2));
+                console.log('Wrote to ' + targetPath);
+            })();
             break;
         case 'mpsschema':
-            let targetSchema = operation.split('=')[1];
-            if(targetSchema) targetSchema = targetSchema.replaceAll(/(^"|"$)/g, '');
-            if(!targetSchema) console.log('Target required');
-            let schemaData = saveFile.readSchema(targetSchema, timestamp);
-            let schemaTargetPath = `dump/${saveFile.name}/${targetSchema}`.replaceAll(/.mps$/g,'.schema.json');
-            fs.mkdirSync(path.dirname(schemaTargetPath), {recursive:true});
-            fs.writeFileSync(schemaTargetPath, JSON.stringify({schema: schemaData}, null, 2));
-            console.log('Wrote to ' + schemaTargetPath);
+            (() => {
+                let target = operation.split('=')[1];
+                if(target) target = target.replaceAll(/(^"|"$)/g, '');
+                if(!target) console.log('Target required');
+                let data = saveFile.readSchema(target, timestamp, true);
+                let targetPath = `dump/converted/${saveFile.name}/${saveFile.buildPath(data.file.parent_id, data.file.name)}` + '_' + data.file.created_at + '.json';
+                fs.mkdirSync(path.dirname(targetPath), {recursive:true});
+                fs.writeFileSync(targetPath, stringifyPlus({schema: data.data}, null, 2));
+                console.log('Wrote to ' + targetPath);
+            })();
             break;
         case 'mapper':
             (() => {
@@ -204,8 +298,31 @@ for(let operation of operations){
                         });
                     }
                 }
-                fs.writeFileSync(`dump/${saveFile.name}_mapper.json`, JSON.stringify(data, null, 2));
+                fs.writeFileSync(`dump/${saveFile.name}_mapper.json`, stringifyPlus(data, null, 2));
                 console.log(`wrote to dump/${saveFile.name}_mapper.json`);
             })();
     }
+}
+
+function stringifyPlus(data, replacer, space){
+    const process = input => {
+        switch(typeof(input)){
+            case 'number':
+                if(isNaN(input)) return 'NaN';
+                if(input == Infinity) return 'Infinity';
+                if(input == -Infinity) return '-Infinity';
+                return input;
+            case 'object':
+                for(let key in input){
+                    input[key] = process(input[key]);
+                }
+                return input;
+            case 'function':
+                return undefined;
+            default:
+                return input;
+        }
+    };
+
+    return JSON.stringify(process(data), replacer, space);
 }
