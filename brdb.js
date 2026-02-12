@@ -26,15 +26,43 @@ export function read(targetFile){
     db.close();
 
     vfs.loadBlobs = targets => {
+        if(targets == null || typeof(targets) == 'number'){
+            const db = new Database(targetFile);
+            let allBlobs = db.prepare('SELECT * FROM blobs').all();
+            if(typeof(targets) == 'number'){
+                vfs.findFile(null, targets);
+                for(let file in vfs.cachedFindmaps[targets]){
+                    vfs.cachedFindmaps[targets][file].blob = vfs.processBlob(allBlobs[vfs.cachedFindmaps[targets][file].content_id-1]);
+                }
+            }else{
+                for(let file in vfs.files){
+                    vfs.cachedFindmaps[targets][file].blob = vfs.processBlob(allBlobs[vfs.cachedFindmaps[targets][file].content_id-1]);
+                }
+            }
+            return vfs;
+        }
         if(typeof(targets) != 'object') throw new Error('Target must be an object or array');
 
-        if(!Array.isArray(targets)) targets = [targets];
+        if(!Array.isArray(targets)){
+            if(targets.blob) return vfs;
+            targets = [targets];
+        }
+        let needsBlobs = false;
+        for(let target of targets){
+            if(!target.blob){
+                needsBlobs = true;
+                break;
+            }
+        }
+
+        if(!needsBlobs) return vfs;
 
         const db = new Database(targetFile);
         let blobQuery = db.prepare('SELECT * FROM blobs WHERE blob_id=?');
         for(let target of targets){
             if(!target || target.blob) continue;
-            target.blob = vfs.processBlob(blobQuery.get(target.content_id));
+            let queryRes = blobQuery.get(target.content_id)
+            target.blob = vfs.processBlob(queryRes);
         }
         db.close();
     };

@@ -67,7 +67,7 @@ const boundsCheckFunctions = {
     'u16': v => v <= 65535,
     'i32': v => v >= -2147483648 && v <= 2147483647,
     'u32': v => v <= 4294967295,
-    'i64': v => v >= -0x8000000000000000n && v <= 0x7ffffffffffffffn,
+    'i64': v => v >= -0x8000000000000000n && v <= 0x7fffffffffffffffn,
     'u64': v => v <= 0xffffffffffffffffn,
     'f32': v => v >= -Number.MAX_VALUE && v <= Number.MAX_VALUE, //this ain't right, but I don't feel like representing this in javascript as it has no concept of 32 bit floats.
     'f64': v => v >= -Number.MAX_VALUE && v <= Number.MAX_VALUE,
@@ -218,11 +218,11 @@ export function readFile(mpsData, schemaData, globalData, dataMode){
             result = mpsData.toString('utf8', ptr + 1, ptr + size);
         }else if(mpsType == 0xda){
             typecheck(type, 'str 16');
-            size = 2 + mpsData.readUInt16(ptr);
+            size = 2 + mpsData.readUInt16BE(ptr);
             result = mpsData.toString('utf8', ptr + 2, ptr + size);
         }else if(mpsType == 0xdb){
             typecheck(type, 'str 32');
-            size = 4 + mpsData.readUInt32(ptr);
+            size = 4 + mpsData.readUInt32BE(ptr);
             result = mpsData.toString('utf8', ptr + 4, ptr + size);
         }else if(mpsType == 0xdc){
             typecheck(type, 'array 16');
@@ -240,7 +240,8 @@ export function readFile(mpsData, schemaData, globalData, dataMode){
             throw Errors.Unimplemented('read map 32');
         }else{
             typecheck(type, 'negative fixint');
-            result = boundcheck(-(mpsType & 0x1f), type);
+            //result = boundcheck(-(mpsType & 0x1f), type);
+            result = boundcheck(mpsData.readInt8(ptr-1), type);
         }
         ptr += size;
         return result;
@@ -319,6 +320,12 @@ export function readFile(mpsData, schemaData, globalData, dataMode){
         if(typeof(data) == 'string'){
             if(typeCompat[data]){
                 result = readSimpleType(data);
+                if(data == 'object'){
+                    result = globalData.ExternalAssetReferences[result];
+                }else if(data == 'class'){
+                    //Classes not fully implemented.
+                    result = 'class #'+result;
+                }
             }else if(enums[data]){
                 let enumValue = readSimpleType('u64');
                 for(let enumOption in enums[data]){
@@ -331,7 +338,45 @@ export function readFile(mpsData, schemaData, globalData, dataMode){
                 if(enumValue != null) throw new Error(`Value ${enumValue} invalid for enum ${data}`);
             }else if(structs[data]){
                 result = readData(structs[data]);
+            }else if(data == 'wire_graph_variant'){ //TODO: Find proper documentation of this
+                let variantType = readData('u64');
+                switch(variantType){
+                    case 0:
+                        result = readData('f64');
+                        break;
+                    case 1:
+                        result = readData('i64');
+                        break;
+                    case 2:
+                        result = readData('bool');
+                        break;
+                    case 3:
+                        result = 'unknown';
+                        //console.log('found unknown wiregraph variant'); //why is this unknown in the rust library?
+                        break;
+                    case 4:
+                        result = 'Exec';
+                        //console.log('found exec wiregraph variant');
+                        break;
+                    default:
+                        console.log('0x'+ptr.toString(16))
+                        throw Errors.Unimplemented(`wire_graph_variant=${variantType}`);
+                }
+            }else if(data == 'wire_graph_prim_math_variant'){
+                let variantType = readData('u64');
+                switch(variantType){
+                    case 0:
+                        result = readData('f64');
+                        break;
+                    case 1:
+                        result = readData('i64');
+                        break;
+                    default:
+                        console.log('0x'+ptr.toString(16))
+                        throw Errors.Unimplemented(`wire_graph_prim_math_variant=${variantType}`);
+                }
             }else{
+                console.log('0x'+ptr.toString(16))
                 throw Errors.NotFound(data);
             }
         }else if(typeof(data) == 'object'){
@@ -385,6 +430,10 @@ export function readFile(mpsData, schemaData, globalData, dataMode){
                 output.data.instances = [];
                 for(let typeCounter of output.data.ComponentTypeCounters){
                     for(let i=0; i<typeCounter.NumInstances; i++){
+                        if(globalData.ComponentDataStructNames[typeCounter.TypeIndex] == 'None'){
+                            output.data.instances.push(null);
+                            continue;
+                        }
                         let instance = readData(structs[globalData.ComponentDataStructNames[typeCounter.TypeIndex]]);
                         instance.name = globalData.ComponentTypeNames[typeCounter.TypeIndex];
                         instance.class = globalData.ComponentDataStructNames[typeCounter.TypeIndex];

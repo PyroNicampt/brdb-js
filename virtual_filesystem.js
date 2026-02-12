@@ -2,7 +2,7 @@
 
 import { Encoder, Decoder } from '@toondepauw/node-zstd';
 import fs from 'node:fs';
-import path from 'node:path';
+import path, { dirname } from 'node:path';
 //const zstdEncoder = new Encoder(3);
 const zstdDecoder = new Decoder();
 import { readFile as mpsReader, extraDataModes} from './msgpack_schema.js';
@@ -23,7 +23,16 @@ export class VirtualFilesystem{
 
     globalData = [];
 
-    //Override with a function to take in a single file object or a list of them and give them their blobs.
+    cachedSchemas = {};
+    cachedFindmaps = {};
+
+    // Is overridden by file loaders to load blob data into the file objects.
+    // When implementing a new filetype, at the very least overwrite with a noop function.
+    // Can take in:
+    // - a single file object
+    // - a list of file objects,
+    // - a timestamp (will load all blobs that match the timestamp)
+    // - null (will load all blobs)
     loadBlobs = () => {throw new Error('loadBlobs not implemented for filetype')};
 
     addFile(fileData){
@@ -37,19 +46,16 @@ export class VirtualFilesystem{
         if(this.latestRevision == 0 || this.revisions[this.latestRevision].created_at < revisionData.created_at)
             this.latestRevision = revisionData.revision_id;
     }
-    findFile(query, path, timestamp){
-        let results = this.findFiles(query, path);
-        if(!results) return null;
-        results.sort((a, b) => {
-            a.created_at - b.created_at;
-        });
-        if(!timestamp) timestamp = this.revisions[this.latestRevision].created_at;
-
-        for(let i=results.length-1; i>=0; i--){
-            if(withinTimestamp(results[i], timestamp)){
-                return results[i];
+    findFile(query, timestamp){
+        if(!this.cachedFindmaps[timestamp]){
+            this.cachedFindmaps[timestamp] = {};
+            for(let i=0; i<this.files.length; i++){
+                if(!this.files[i]) continue;
+                if(!withinTimestamp(this.files[i], timestamp)) continue;
+                this.cachedFindmaps[timestamp][this.buildPath(this.files[i].parent_id, this.files[i].name)] = this.files[i];
             }
         }
+        return this.cachedFindmaps[timestamp][query];
     }
     findFiles(query, path){
         let results = [];
@@ -82,6 +88,8 @@ export class VirtualFilesystem{
         return results;
     }
     processBlob(blob){
+        if(blob.processed) return blob;
+        blob.processed = true;
         if(blob.compression == 0) return blob;
         blob.content = zstdDecoder.decodeSync(blob.content);
         return blob;
@@ -110,6 +118,7 @@ export class VirtualFilesystem{
 
     readMps(mpsFile, timestamp, returnFile){
         let result = grabMpsSchema(this, mpsFile, timestamp, true, returnFile);
+        if(!result) return;
         if(returnFile) return {
             file: result.files.mps,
             data: result.data
@@ -119,6 +128,7 @@ export class VirtualFilesystem{
 
     readSchema(mpsFile, timestamp, returnFile){
         let result = grabMpsSchema(this, mpsFile, timestamp, false, returnFile);
+        if(!result) return;
         if(returnFile) return {
             file: result.files.schema,
             data: result.schema
@@ -133,48 +143,60 @@ export class VirtualFilesystem{
     getTimestampFromRevision(revision){
         return this.revisions[validateRevision(this, revision)].created_at;
     }
+
+    getGlobalData = revision => getGlobalData(this, revision);
 }
 
+const gridRegex = /^World\/0\/Bricks\/Grids\/\d+\/(Chunks|Components|Wires|ChunkIndex)/;
 function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false){
+    if(!timestamp) timestamp = vfs.revisions[vfs.latestRevision].created_at;
     let targetMps;
     let dirName;
     let fileName;
+    let combinedName;
     if(typeof(mpsFile) == 'string'){
         if(!mpsFile.endsWith('.mps'))
             throw new Error(`${mpsFile} is not an .mps file`);
         dirName = path.dirname(mpsFile);
         fileName = path.basename(mpsFile, '.mps');
-    
-        targetMps = vfs.findFile(fileName+'.mps', dirName, timestamp);
+        combinedName = dirName + '/' + fileName;
+        targetMps = vfs.findFile(combinedName + '.mps', timestamp);
     }else if(typeof(mpsFile) == 'object'){
         targetMps = mpsFile;
         dirName = vfs.buildPath(targetMps.parent_id, '');
         fileName = targetMps.name.replaceAll(/\.mps$/g, '');
+        combinedName = dirName + '/' + fileName;
     }
 
     if(targetMps){
-        let targetSchema = vfs.findFile(fileName+'.schema', dirName, targetMps.created_at);
-        if(!targetSchema && targetMps.parent_id){
-            let nextParent = targetMps.parent_id;
-            let nextFile = fileName+'Shared.schema';
-            for(let sharedSchemaFolderName of sharedSchemaFolderNames){
-                if(sharedSchemaFolderName == vfs.folders[nextParent].name){
-                    nextFile = sharedSchemaFolderName+'Shared.schema';
-                    break;
+        //TODO: For some reason, the correct version of schema isn't being loaded
+        let targetSchema;
+        let gridMatch = gridRegex.exec(combinedName);
+        if(gridMatch){
+            if(vfs.cachedSchemas[targetMps.created_at] && vfs.cachedSchemas[targetMps.created_at][gridMatch[1]]){
+                targetSchema = vfs.cachedSchemas[targetMps.created_at][gridMatch[1]];
+            }else{
+                if(!vfs.cachedSchemas[targetMps.created_at]) vfs.cachedSchemas[targetMps.created_at] = {};
+                switch(gridMatch[1]){
+                    case 'Chunks':
+                    case 'Components':
+                    case 'Wires':
+                    case 'ChunkIndex':
+                        vfs.cachedSchemas[targetMps.created_at][gridMatch[1]] = vfs.findFile(`World/0/Bricks/${gridMatch[1]}Shared.schema`, targetMps.created_at);
+                        targetSchema = vfs.findFile(`World/0/Bricks/${gridMatch[1]}Shared.schema`, targetMps.created_at);
+                        break;
                 }
             }
-            let iterations = 0;
-            while(nextParent){
-                targetSchema = vfs.findFile(nextFile, vfs.buildPath(nextParent), targetMps.created_at);
-                if(targetSchema) break;
-
-                nextParent = vfs.folders[nextParent].parent_id;
-                
-                iterations++;
-                if(iterations > 255) throw new Error(`Too many levels deep in folder id ${targetMps.parent_id}`);
+        }
+        if(!targetSchema){
+            if(dirName == 'World/0/Entities/Chunks'){
+                targetSchema = vfs.findFile('World/0/Entities/ChunksShared.schema', targetMps.created_at);
+            }else{
+                targetSchema = vfs.findFile(combinedName + '.schema', targetMps.created_at);
             }
         }
-        if(!targetSchema) throw new Error(`No suitable .schema found for .mps: ${dirName + '/' + fileName}`);
+        //console.log(`Mps Ver: ${targetMps.created_at}, Schema Ver: ${targetSchema.created_at}\n\n`, vfs.cachedSchemas)
+        if(!targetSchema) throw new Error(`No suitable .schema found for .mps: ${combinedName}`);
         //console.log(`Found ${vfs.buildPath(targetMps.parent_id, targetMps.name)} and ${vfs.buildPath(targetSchema.parent_id, targetSchema.name)}\nReading...`);
         
         let globalData;
@@ -189,12 +211,18 @@ function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false){
                 }
             }
         }
-        
+
         try{
             let result;
             if(getMps){
                 vfs.loadBlobs([targetMps, targetSchema]);
+                try{
                 result = mpsReader(targetMps.blob.content, targetSchema.blob.content, globalData, dataMode);
+                }catch(e){
+                    fs.writeFileSync('dump/broken.mps', targetMps.blob.content, {encoding:null, flag:'w'});
+                    fs.writeFileSync('dump/broken.schema', JSON.stringify(mpsReader(null, targetSchema.blob.content).schema, null, 4), {encoding:'utf8'});
+                    throw e;
+                }
                 if(returnFiles) result.files = {mps:targetMps, schema:targetSchema};
             }else{
                 vfs.loadBlobs([targetSchema]);
@@ -207,7 +235,7 @@ function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false){
             throw e;
         }
     }
-    throw new Error(`${dirName + '/' + fileName} was not found in virtual filesystem`);
+    return null;
 }
 
 function getGlobalData(vfs, timestamp){
