@@ -455,7 +455,8 @@ for(let operation of operations){
                     }
                 }
                 Profiler.end('mapper', 1, 's');
-                console.log('Writing...')
+                console.log('Writing...');
+                fs.mkdirSync('./dump', {recursive:true});
                 fs.writeFileSync(`dump/${saveFile.name}_mapper.json`, stringifyPlus(data, null, 2));
                 console.log(`Wrote to dump/${saveFile.name}_mapper.json`);
             })();
