@@ -315,7 +315,30 @@ for(let operation of operations){
                 data.components = [];
 
                 const chunkIndexRegex = /World\/0\/Bricks\/Grids\/(?<grid>\d+)\/ChunkIndex\.mps/;
-                let filteredComponents = ['BrickComponentType_WireGraphPseudo_BufferTicks', 'BrickComponentType_WireGraphPseudo_BufferSeconds'];
+                let filteredComponents = [
+                    'BrickComponentType_WireGraphPseudo_BufferTicks',
+                    'BrickComponentType_WireGraphPseudo_BufferSeconds',
+                    'Component_PointLight',
+                    'Component_SpotLight',
+                    'BrickComponentType_Internal_TeleportDestination',
+                    'BrickComponentType_WireGraph_Exec_Entity_Teleport',
+                    'BrickComponentType_WireGraph_Exec_Entity_RelativeTeleport',
+                    'BrickComponentType_WireGraph_Exec_Entity_SetRotation',
+                    'BrickComponentType_WireGraph_Exec_Entity_SetLocationRotation',
+                    'BrickComponentType_WireGraph_Exec_Entity_SetLocation',
+                    'BrickComponentType_WireGraph_Exec_Entity_AddLocationRotation',
+                    'Component_WireGraph_PlayAudioAt',
+                    'Component_OneShotAudioEmitter',
+                    'Component_AudioEmitter',
+                    'Component_BotSpawn',
+                    'BrickComponentType_WireGraph_Exec_Entity_AddVelocity',
+                    'BrickComponentType_WireGraph_Exec_Entity_SetVelocity',
+                    'BrickComponentType_WireGraph_Exec_Entity_SetGravityDirection',
+                ];
+                let worldGridFilteredComponents = [
+                    'Component_Internal_WheelEngine',
+                    'Component_Internal_WeightBrick',
+                ]
                 
                 let transformBrickCoords = (relativePosition, grid, chunkIndex, chunkOffset, chunkSize) => {
                     let pos = {
@@ -432,7 +455,7 @@ for(let operation of operations){
 
                                 for(let inst=0; inst<components.instances.length; inst++){
                                     if(!components.instances[inst]) continue;
-                                    if(filteredComponents.includes(components.instances[inst].name)){
+                                    if(filteredComponents.includes(components.instances[inst].name) || (grid == 1 && worldGridFilteredComponents.includes(components.instances[inst].name))){
                                         let brickIndex = components.ComponentBrickIndices[inst];
                                         components.instances[inst].position = transformBrickCoords(
                                             bricks.RelativePositions[brickIndex],
