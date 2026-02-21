@@ -37,6 +37,8 @@ Outputs the description from a .brz bundle in a plain-formatted manner.
 Will dump the specified mps into a json file next to where it would be dumped to.
 - `mpsschema=<path>`
 Will dump the selected mps file's schema next to where the schema would be dumped to.
+- `compress`
+Compresses the output of mapper with gzip compression. Must come before mapper.
 - `mapper`
 Dumps specific data out to a .json for usage in the [brickadia mapper webpage.](https://pyronicampt.github.io/BrickadiaMapper/)
 

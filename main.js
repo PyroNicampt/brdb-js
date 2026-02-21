@@ -2,6 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import zlib from 'node:zlib';
 
 import {read as BrzRead} from './brz.js';
 import {read as BrdbRead} from './brdb.js';
@@ -41,12 +42,20 @@ switch(targetExtension){
 
 let revisionNumber = null;
 let timestamp = saveFile.getTimestampFromRevision(null);
+let compressionLevel = 0;
 
 for(let operation of operations){
     switch(operation.split('=')[0]){
         case 'revision':
             revisionNumber = Number.parseInt(operation.split('=')[1]);
             timestamp = saveFile.getTimestampFromRevision(revisionNumber);
+            break;
+        case 'compress':
+            compressionLevel = Number.parseInt(operation.split('=')[1]);
+            if(isNaN(compressionLevel) || compressionLevel > 9)
+                compressionLevel = 9;
+            else if(compressionLevel < 0)
+                compressionLevel = 0;
             break;
         case 'stats':
             console.log('Stats Dump:\n', saveFile.getStats());
@@ -492,8 +501,9 @@ for(let operation of operations){
                 Profiler.end('mapper', 1, 's');
                 console.log('Writing...');
                 fs.mkdirSync('./dump', {recursive:true});
-                fs.writeFileSync(`dump/${saveFile.name}_mapper.json`, stringifyPlus(data, null, 2));
-                console.log(`Wrote to dump/${saveFile.name}_mapper.json`);
+                let extension = compressionLevel > 0 ? 'gz' : 'json';
+                fs.writeFileSync(`dump/${saveFile.name}_mapper.${extension}`, compressionLevel > 0 ? zlib.gzipSync(stringifyPlus(data), {level:compressionLevel}) : stringifyPlus(data, null, 2));
+                console.log(`Wrote to dump/${saveFile.name}_mapper.${extension}`);
             })();
     }
 }
