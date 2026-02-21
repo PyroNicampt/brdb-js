@@ -345,6 +345,7 @@ for(let operation of operations){
                     'BrickComponentType_WireGraph_Exec_Entity_SetGravityDirection',
                     'Component_ItemSpawn',
                     'Component_SpawnPoint',
+                    'Component_CheckPoint',
                     'Component_BrickPropertyChanger',
                 ];
                 let worldGridFilteredComponents = [
