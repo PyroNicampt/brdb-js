@@ -334,6 +334,9 @@ for(let operation of operations){
                     'BrickComponentType_WireGraph_Exec_Entity_AddVelocity',
                     'BrickComponentType_WireGraph_Exec_Entity_SetVelocity',
                     'BrickComponentType_WireGraph_Exec_Entity_SetGravityDirection',
+                    'Component_ItemSpawn',
+                    'Component_SpawnPoint',
+                    'Component_BrickPropertyChanger',
                 ];
                 let worldGridFilteredComponents = [
                     'Component_Internal_WheelEngine',
@@ -471,6 +474,15 @@ for(let operation of operations){
                                         components.instances[inst].owner = bricks.OwnerIndices[brickIndex];
                                         components.instances[inst].grid = grid;
                                         data.components.push(components.instances[inst]);
+                                    }
+                                    if(components.instances[inst].name == 'Component_Internal_WheelEngine' && grid != 1 && data.entities){
+                                        if(!data.entities.vehicleIndices)
+                                        for(let entIndex = 0; entIndex < data.entities.PersistentIndices.length; entIndex++){
+                                            if(data.entities.PersistentIndices[entIndex] == grid){
+                                                data.entities.instances[entIndex].hasEngine = true;
+                                                break;
+                                            }
+                                        }
                                     }
                                 }
                             }
