@@ -293,7 +293,7 @@ for(let operation of operations){
                 console.log('Loading Owners and Entities...');
 
                 let data = {
-                    version: 1,
+                    version: 2,
                     owners: saveFile.readMps('World/0/Owners.mps', timestamp),
                     entities: saveFile.readMps('World/0/Entities/Chunks/0_0_0.mps', timestamp),
                 };
@@ -422,6 +422,8 @@ for(let operation of operations){
                 };
 
                 console.log('Parsing through files...');
+                let blankSize = {X:5, Y:5, Z:2};
+                let brickSizeIndex = 0;
                 resetProgress(saveFile.files.length);
                 for(let file of saveFile.files){
                     progressReport();
@@ -433,9 +435,13 @@ for(let operation of operations){
                         let grid = Number(matchData.groups.grid);
                         let chunkIndex = saveFile.readMps(path);
                         for(let cIndex=0; cIndex<chunkIndex.Chunk3DIndices.length; cIndex++){
+                            let bricks;
+                            let chunkPath = `${chunkIndex.Chunk3DIndices[cIndex].X}_${chunkIndex.Chunk3DIndices[cIndex].Y}_${chunkIndex.Chunk3DIndices[cIndex].Z}.mps`;
+                            let componentPath = `World/0/Bricks/Grids/${grid}/Components/${chunkPath}`;
+                            let brickPath = `World/0/Bricks/Grids/${grid}/Chunks/${chunkPath}`;
                             if(grid == 1){
-                                data.chunks.push({
-                                    position:{
+                                let chunkData = {
+                                    index3d:{
                                         x: chunkIndex.Chunk3DIndices[cIndex].X,
                                         y: chunkIndex.Chunk3DIndices[cIndex].Y,
                                         z: chunkIndex.Chunk3DIndices[cIndex].Z,
@@ -449,13 +455,72 @@ for(let operation of operations){
                                     brickCount: chunkIndex.NumBricks[cIndex],
                                     componentCount: chunkIndex.NumComponents[cIndex],
                                     wireCount: chunkIndex.NumWires[cIndex],
-                                });
+                                };
+                                chunkData.position = {
+                                    x: chunkData.index3d.x * chunkData.size + chunkData.size * 0.5,
+                                    y: chunkData.index3d.y * chunkData.size + chunkData.size * 0.5,
+                                    z: chunkData.index3d.z * chunkData.size + chunkData.size * 0.5,
+                                };
+                                if(chunkData.brickCount > 0){
+                                    bricks = saveFile.readMps(brickPath);
+                                    if(bricks && bricks.RelativePositions.length > 0){
+                                        chunkData.boundsMin = {x:Infinity, y:Infinity, z:Infinity};
+                                        chunkData.boundsMax = {x:-Infinity, y:-Infinity, z:-Infinity};
+                                        for(let b=0; b<bricks.RelativePositions.length; b++){
+                                            brickSizeIndex = bricks.BrickTypeIndices[b] - bricks.ProceduralBrickStartingIndex;
+                                            chunkData.boundsMin.x = Math.min(chunkData.boundsMin.x, bricks.RelativePositions[b].X - (bricks.BrickSizes[brickSizeIndex] ?? blankSize).X);
+                                            chunkData.boundsMin.y = Math.min(chunkData.boundsMin.y, bricks.RelativePositions[b].Y - (bricks.BrickSizes[brickSizeIndex] ?? blankSize).Y);
+                                            chunkData.boundsMin.z = Math.min(chunkData.boundsMin.z, bricks.RelativePositions[b].Z - (bricks.BrickSizes[brickSizeIndex] ?? blankSize).Z);
+                                            chunkData.boundsMax.x = Math.max(chunkData.boundsMax.x, bricks.RelativePositions[b].X + (bricks.BrickSizes[brickSizeIndex] ?? blankSize).X);
+                                            chunkData.boundsMax.y = Math.max(chunkData.boundsMax.y, bricks.RelativePositions[b].Y + (bricks.BrickSizes[brickSizeIndex] ?? blankSize).Y);
+                                            chunkData.boundsMax.z = Math.max(chunkData.boundsMax.z, bricks.RelativePositions[b].Z + (bricks.BrickSizes[brickSizeIndex] ?? blankSize).Z);
+                                        }
+                                        chunkData.boundsMin.x += chunkData.position.x;
+                                        chunkData.boundsMin.y += chunkData.position.y;
+                                        chunkData.boundsMin.z += chunkData.position.z;
+                                        chunkData.boundsMax.x += chunkData.position.x;
+                                        chunkData.boundsMax.y += chunkData.position.y;
+                                        chunkData.boundsMax.z += chunkData.position.z;
+
+                                        if(bricks.RelativePositions.length == 1){
+                                            chunkData.geometricMedian = {
+                                                x: bricks.RelativePositions[0].X + chunkData.position.x,
+                                                y: bricks.RelativePositions[0].Y + chunkData.position.y,
+                                                z: bricks.RelativePositions[0].Z + chunkData.position.z,
+                                            };
+                                        }else{
+                                            let brickPositions = [...bricks.RelativePositions];
+                                            for(let axis of ['X', 'Y', 'Z']){
+                                                brickPositions.sort((a, b) => {
+                                                    return a[axis] - b[axis]; 
+                                                });
+                                                let S = 0;
+                                                let v;
+                                                for(let i=0; i<brickPositions.length; i++){
+                                                    v = brickPositions[i][axis];
+                                                    if(!brickPositions[i]['dist']) brickPositions[i]['dist'] = 0;
+                                                    brickPositions[i]['dist'] += (2 * i - brickPositions.length) * v - 2 * S;
+                                                    S += v;
+                                                }
+                                            }
+                                            let minIndex = 0;
+                                            for(let i=0; i<brickPositions.length; i++){
+                                                if(brickPositions[i].dist < brickPositions[minIndex].dist) minIndex = i;
+                                            }
+                                            chunkData.geometricMedian = {
+                                                x: brickPositions[minIndex].X + chunkData.position.x,
+                                                y: brickPositions[minIndex].Y + chunkData.position.y,
+                                                z: brickPositions[minIndex].Z + chunkData.position.z,
+                                            };
+                                        }
+                                    }else bricks = null;
+                                }
+                                data.chunks.push(chunkData);
                             }
 
                             if(chunkIndex.NumComponents[cIndex] > 0){
-                                let componentPath = `World/0/Bricks/Grids/${grid}/Components/${chunkIndex.Chunk3DIndices[cIndex].X}_${chunkIndex.Chunk3DIndices[cIndex].Y}_${chunkIndex.Chunk3DIndices[cIndex].Z}.mps`;
                                 let components = saveFile.readMps(componentPath);
-                                let bricks = saveFile.readMps(componentPath.replaceAll('/Components/', '/Chunks/'));
+                                if(bricks !== null) bricks = saveFile.readMps(brickPath);
                                 if(!components){
                                     //console.log(`Grid ${grid} has no corresponding component data at ${cIndex}: ${componentPath}`);
                                     continue;
