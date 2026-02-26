@@ -237,7 +237,10 @@ for(let operation of operations){
             (() => {
                 let target = operation.split('=')[1];
                 if(target) target = target.replaceAll(/(^"|"$)/g, '');
-                if(!target) console.log('Target required');
+                if(!target){
+                    console.log('Target required');
+                    return;
+                }
                 let data = saveFile.readMps(target, timestamp);
                 let targetPath = `dump/converted/${saveFile.name}/${target}` + '.json';
                 fs.mkdirSync(path.dirname(targetPath), {recursive:true});
@@ -249,7 +252,10 @@ for(let operation of operations){
             (() => {
                 let target = operation.split('=')[1];
                 if(target) target = target.replaceAll(/(^"|"$)/g, '');
-                if(!target) console.log('Target required');
+                if(!target){
+                    console.log('Target required');
+                    return;
+                }
                 let data = saveFile.readSchema(target, timestamp, true);
                 let targetPath = `dump/converted/${saveFile.name}/${saveFile.buildPath(data.file.parent_id, data.file.name)}` + '_' + data.file.created_at + '.json';
                 fs.mkdirSync(path.dirname(targetPath), {recursive:true});
