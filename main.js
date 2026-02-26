@@ -553,6 +553,7 @@ for(let operation of operations){
                                             continue;
                                         }
                                         components.instances[inst].owner = bricks.OwnerIndices[brickIndex];
+                                        if(bricks.OriginalOwnerIndices) components.instances[inst].originalOwner = bricks.OriginalOwnerIndices[brickIndex];
                                         components.instances[inst].grid = grid;
                                         data.components.push(components.instances[inst]);
                                     }
