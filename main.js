@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
-import {read as BrzRead} from './brz.js';
+import {read as BrzRead, write as BrzWrite} from './brz.js';
 import {read as BrdbRead} from './brdb.js';
 import { withinTimestamp } from './virtual_filesystem.js';
 import Profiler from './profiler.js';
