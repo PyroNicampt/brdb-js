@@ -86,6 +86,9 @@ for(let operation of operations){
                 console.log(`Dumped filesystem to ${outputFolder}`);
             })();
             break;
+        case 'dumpfull':
+            let dumpSchemas = true;
+            // fallthrough
         case 'dump':
             (() => {
                 console.log(`Converting and Dumping ${saveFile.name}'s filesystem...`);
@@ -133,13 +136,15 @@ for(let operation of operations){
                         stringifyPlus(data.data, null, 2),
                         {encoding:'utf8', flag:'w'}
                     );
-                    /*let schemaPath = outputFolder + '/' + saveFile.buildPath(data.files.schema.parent_id, data.files.schema.name) + '_' + data.files.schema.created_at + '.json';
-                    if(fs.existsSync(schemaPath)) continue;
-                    fs.writeFileSync(
-                        schemaPath,
-                        stringifyPlus(data.schema, null, 2),
-                        {encoding:'utf8', flag:'w'}
-                    );*/
+                    if(dumpSchemas){
+                        let schemaPath = outputFolder + '/' + saveFile.buildPath(data.files.schema.parent_id, data.files.schema.name) + '_' + data.files.schema.created_at + '.json';
+                        if(fs.existsSync(schemaPath)) continue;
+                        fs.writeFileSync(
+                            schemaPath,
+                            stringifyPlus(data.schema, null, 2),
+                            {encoding:'utf8', flag:'w'}
+                        );
+                    }
                     dumpProgressReport();
                 }
                 console.log(`Converted and Dumped filesystem to ${outputFolder}`);

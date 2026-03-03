@@ -24,6 +24,8 @@ Selects a specific revision to perform operations on.
 Shows the filesystem statistics of the save
 - `dump`
 Dumps the contents of the save to a folder, in a human readable format.
+- `dumpfull`
+Same as dump, but also writes all schemas.
 - `dumpraw`
 Dumps the raw decompressed contents to a folder.
 - `owners`
