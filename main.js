@@ -43,6 +43,7 @@ switch(targetExtension){
 let revisionNumber = null;
 let timestamp = saveFile.getTimestampFromRevision(null);
 let compressionLevel = 0;
+let dumpSchemas = false;
 
 for(let operation of operations){
     switch(operation.split('=')[0]){
@@ -87,7 +88,7 @@ for(let operation of operations){
             })();
             break;
         case 'dumpfull':
-            let dumpSchemas = true;
+            dumpSchemas = true;
             // fallthrough
         case 'dump':
             (() => {
