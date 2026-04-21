@@ -269,6 +269,21 @@ for(let operation of operations){
                 console.log('Wrote to ' + targetPath);
             })();
             break;
+        case 'schema':
+            (() => {
+                let target = operation.split('=')[1];
+                if(target) target = target.replaceAll(/(^"|"$)/g, '');
+                if(!target){
+                    console.log('Target required');
+                    return;
+                }
+                let data = saveFile.readSchemaOnly(target, timestamp, true);
+                let targetPath = `dump/converted/${saveFile.name}/${saveFile.buildPath(data.file.parent_id, data.file.name)}` + '_' + data.file.created_at + '.json';
+                fs.mkdirSync(path.dirname(targetPath), {recursive:true});
+                fs.writeFileSync(targetPath, stringifyPlus({schema: data.data}, null, 2));
+                console.log('Wrote to ' + targetPath);
+            })();
+            break;
         case 'mapper':
             (() => {
                 Profiler.start('mapper');

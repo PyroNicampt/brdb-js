@@ -136,6 +136,19 @@ export class VirtualFilesystem{
         return result.schema;
     }
 
+    readSchemaOnly(schemaFile, timestamp, returnFile){
+        let targetSchema = this.findFile(schemaFile, timestamp);
+        if(!targetSchema) return;
+
+        this.loadBlobs(targetSchema);
+        let result = mpsReader(null, targetSchema.blob.content);
+        if(returnFile) return {
+            file: targetSchema,
+            data: result.schema
+        };
+        return result.schema;
+    }
+
     readMpsAndSchema(mpsFile, timestamp, returnFiles){
         return grabMpsSchema(this, mpsFile, timestamp, true, returnFiles);
     }
