@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path, { dirname } from 'node:path';
 //const zstdEncoder = new Encoder(3);
 const zstdDecoder = new Decoder();
-import { readFile as mpsReader, extraDataModes} from './msgpack_schema.js';
+import { readFile as mpsReader, writeFile as mpsWriter, extraDataModes} from './msgpack_schema.js';
 
 // .mps files in these folders usually are named by coordinates, and their .schema are named after the folder.
 const sharedSchemaFolderNames = [
@@ -116,8 +116,8 @@ export class VirtualFilesystem{
         return finalPath;
     }
 
-    readMps(mpsFile, timestamp, returnFile){
-        let result = grabMpsSchema(this, mpsFile, timestamp, true, returnFile);
+    readMps(mpsFile, timestamp, returnFile, getFileOnly){
+        let result = grabMpsSchema(this, mpsFile, timestamp, true, returnFile, getFileOnly);
         if(!result) return;
         if(returnFile) return {
             file: result.files.mps,
@@ -126,8 +126,8 @@ export class VirtualFilesystem{
         return result.data;
     }
 
-    readSchema(mpsFile, timestamp, returnFile){
-        let result = grabMpsSchema(this, mpsFile, timestamp, false, returnFile);
+    readSchema(mpsFile, timestamp, returnFile, getFileOnly){
+        let result = grabMpsSchema(this, mpsFile, timestamp, false, returnFile, getFileOnly);
         if(!result) return;
         if(returnFile) return {
             file: result.files.schema,
@@ -136,9 +136,11 @@ export class VirtualFilesystem{
         return result.schema;
     }
 
-    readSchemaOnly(schemaFile, timestamp, returnFile){
-        let targetSchema = this.findFile(schemaFile, timestamp);
-        if(!targetSchema) return;
+    readSchemaOnly(schemaFile, timestamp, returnFile, getFileOnly){
+        let targetSchema = schemaFile;
+        if(typeof(targetSchema) == 'string')
+            targetSchema = this.findFile(schemaFile, timestamp, null, getFileOnly);
+        if(!targetSchema || typeof(targetSchema) != 'object') return;
 
         this.loadBlobs(targetSchema);
         let result = mpsReader(null, targetSchema.blob.content);
@@ -161,12 +163,14 @@ export class VirtualFilesystem{
 }
 
 const gridRegex = /^World\/0\/Bricks\/Grids\/\d+\/(Chunks|Components|Wires|ChunkIndex)/;
-function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false){
+function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false, getFileOnly = false){
     if(!timestamp) timestamp = vfs.revisions[vfs.latestRevision].created_at;
     let targetMps;
     let dirName;
     let fileName;
     let combinedName;
+    let dataMode;
+    let schemaOverride;
     if(typeof(mpsFile) == 'string'){
         if(!mpsFile.endsWith('.mps'))
             throw new Error(`${mpsFile} is not an .mps file`);
@@ -202,8 +206,12 @@ function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false){
             }
         }
         if(!targetSchema){
-            if(dirName == 'World/0/Entities/Chunks'){
+            if(dirName == 'World/0/Entities/Chunks' || combinedName == 'World/0/Entities/GlobalGrid'){
                 targetSchema = vfs.findFile('World/0/Entities/ChunksShared.schema', targetMps.created_at);
+                if(combinedName == 'World/0/Entities/GlobalGrid'){
+                    dataMode = 'None';
+                    schemaOverride = 'BrickGridDynamicActor';
+                }
             }else{
                 targetSchema = vfs.findFile(combinedName + '.schema', targetMps.created_at);
             }
@@ -213,8 +221,9 @@ function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false){
         //console.log(`Found ${vfs.buildPath(targetMps.parent_id, targetMps.name)} and ${vfs.buildPath(targetSchema.parent_id, targetSchema.name)}\nReading...`);
         
         let globalData;
-        let dataMode;
-        if(dirName+'/'+fileName != 'World/0/GlobalData'){
+        if(dataMode == 'None'){
+            globalData = getGlobalData(vfs, timestamp);
+        }else if(dirName+'/'+fileName != 'World/0/GlobalData'){
             let schemaPath = vfs.buildPath(targetSchema.parent_id, targetSchema.name);
             for(let dataModeCheck in extraDataModes){
                 if(extraDataModes[dataModeCheck].schemaTest.test(schemaPath)){
@@ -228,18 +237,24 @@ function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false){
         try{
             let result;
             if(getMps){
-                vfs.loadBlobs([targetMps, targetSchema]);
-                try{
-                result = mpsReader(targetMps.blob.content, targetSchema.blob.content, globalData, dataMode);
-                }catch(e){
-                    fs.writeFileSync('dump/broken.mps', targetMps.blob.content, {encoding:null, flag:'w'});
-                    fs.writeFileSync('dump/broken.schema', JSON.stringify(mpsReader(null, targetSchema.blob.content).schema, null, 4), {encoding:'utf8'});
-                    throw e;
+                if(getFileOnly) result = {};
+                else{
+                    vfs.loadBlobs([targetMps, targetSchema]);
+                    try{
+                        result = mpsReader(targetMps.blob.content, targetSchema.blob.content, globalData, dataMode, schemaOverride);
+                    }catch(e){
+                        fs.writeFileSync('dump/broken.mps', targetMps.blob.content, {encoding:null, flag:'w'});
+                        fs.writeFileSync('dump/broken.schema', JSON.stringify(mpsReader(null, targetSchema.blob.content).schema, null, 4), {encoding:'utf8'});
+                        throw e;
+                    }
                 }
                 if(returnFiles) result.files = {mps:targetMps, schema:targetSchema};
             }else{
-                vfs.loadBlobs([targetSchema]);
-                result = mpsReader(null, targetSchema.blob.content, globalData, dataMode);
+                if(getFileOnly) result = {};
+                else{
+                    vfs.loadBlobs([targetSchema]);
+                    result = mpsReader(null, targetSchema.blob.content, globalData, dataMode);
+                }
                 if(returnFiles) result.files = {schema:targetSchema};
             }
             return result;

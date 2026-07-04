@@ -138,7 +138,7 @@ for(let operation of operations){
                         {encoding:'utf8', flag:'w'}
                     );
                     if(dumpSchemas){
-                        let schemaPath = outputFolder + '/' + saveFile.buildPath(data.files.schema.parent_id, data.files.schema.name) + '_' + data.files.schema.created_at + '.json';
+                        let schemaPath = outputFolder + '/' + saveFile.buildPath(data.files.schema.parent_id, data.files.schema.name) + '.' + data.files.schema.created_at + '.json';
                         if(fs.existsSync(schemaPath)) continue;
                         fs.writeFileSync(
                             schemaPath,
@@ -149,6 +149,47 @@ for(let operation of operations){
                     dumpProgressReport();
                 }
                 console.log(`Converted and Dumped filesystem to ${outputFolder}`);
+            })();
+            break;
+        case 'dumpschemas':
+            (() => {
+                console.log(`Converting and Dumping ${saveFile.name}'s schemas...`);
+                let outputFolder = `./dump/converted/${saveFile.name}`;
+
+                if(fs.existsSync(outputFolder)){
+                    console.log('Cleaning existing files...');
+                    fs.rmSync(outputFolder, {recursive:true});
+                }
+                console.log('Gathering files...');
+                for(let folder of saveFile.folders){
+                    if(!folder) continue;
+                    if(!withinTimestamp(folder, timestamp)) continue;
+                    fs.mkdirSync(outputFolder + '/' + saveFile.buildPath(folder.parent_id, folder.name), {recursive:true});
+                }
+                let schemaDumpFiles = [];
+                for(let file of saveFile.files){
+                    if(!file) continue;
+                    if(!withinTimestamp(file, timestamp)) continue;
+                    if(file.name.endsWith('.mps'))
+                        schemaDumpFiles.push(saveFile.readSchema(file, timestamp, true, true).file);
+                }
+                saveFile.loadBlobs(schemaDumpFiles);
+                let dumpCounter = 0;
+                let totalCount = schemaDumpFiles.length;
+                let dumpProgressReport = () => {
+                    dumpCounter++;
+                    if(dumpCounter % 100 == 0){
+                        console.log(`Converted ${dumpCounter}/${totalCount} > ${Math.floor(dumpCounter/totalCount * 1000)/10}%`);
+                    }
+                };
+
+                for(let file of schemaDumpFiles){
+                    let targetPath = `${outputFolder}/${saveFile.buildPath(file.parent_id, file.name)}.${file.created_at}.json`;
+                    let data = saveFile.readSchemaOnly(file);
+                    fs.writeFileSync(targetPath, stringifyPlus(data, null, 2));
+                    dumpProgressReport();
+                }
+                console.log(`Converted and Dumped schemas to ${outputFolder}`);
             })();
             break;
         case 'owners':
@@ -263,9 +304,9 @@ for(let operation of operations){
                     return;
                 }
                 let data = saveFile.readSchema(target, timestamp, true);
-                let targetPath = `dump/converted/${saveFile.name}/${saveFile.buildPath(data.file.parent_id, data.file.name)}` + '_' + data.file.created_at + '.json';
+                let targetPath = `dump/converted/${saveFile.name}/${saveFile.buildPath(data.file.parent_id, data.file.name)}` + '.' + data.file.created_at + '.json';
                 fs.mkdirSync(path.dirname(targetPath), {recursive:true});
-                fs.writeFileSync(targetPath, stringifyPlus({schema: data.data}, null, 2));
+                fs.writeFileSync(targetPath, stringifyPlus(data.data, null, 2));
                 console.log('Wrote to ' + targetPath);
             })();
             break;
@@ -278,9 +319,9 @@ for(let operation of operations){
                     return;
                 }
                 let data = saveFile.readSchemaOnly(target, timestamp, true);
-                let targetPath = `dump/converted/${saveFile.name}/${saveFile.buildPath(data.file.parent_id, data.file.name)}` + '_' + data.file.created_at + '.json';
+                let targetPath = `dump/converted/${saveFile.name}/${saveFile.buildPath(data.file.parent_id, data.file.name)}` + '.' + data.file.created_at + '.json';
                 fs.mkdirSync(path.dirname(targetPath), {recursive:true});
-                fs.writeFileSync(targetPath, stringifyPlus({schema: data.data}, null, 2));
+                fs.writeFileSync(targetPath, stringifyPlus(data.data, null, 2));
                 console.log('Wrote to ' + targetPath);
             })();
             break;

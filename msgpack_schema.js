@@ -2,6 +2,8 @@
 
 import msgpack from '@msgpack/msgpack';
 
+const utfEncoder = new TextEncoder();
+
 const Errors = {
     Mismatch: (offset, expectedData, recievedData, extraInfo) => {
         return new Error(`Mismatch between schema(${expectedData}) and data(${recievedData}) at 0x${offset.toString(16)}` + (extraInfo ? ': '+ extraInfo : ''));
@@ -23,7 +25,13 @@ const Errors = {
     },
     OutOfBounds: (value, type) => {
         return new Error(`Value is too big for ${type}: 0x${value.toString(16)}`);
-    }
+    },
+    WriteOOB: (type, data) => {
+        return new Error(`Value out of bounds for ${type}: ${data}`);
+    },
+    WrongType: (type, data) => {
+        return new Error(`Data is not valid for ${type}: ${data}`);
+    },
 }
 
 // mpack, the library brickadia uses for serializing/deserializing msgpack doesn't check lower bounds on
@@ -33,14 +41,14 @@ const Errors = {
 // and just allow any msgpack integer to work with any integer type because fuckit.
 const typeCompat = {
     'bool': ['true', 'false'],
-    // 'u8': ['positive fixint', 'uint 8'],
-    // 'u16': ['positive fixint', 'uint 8', 'uint 16'],
-    // 'u32': ['positive fixint', 'uint 8', 'uint 16', 'uint 32'],
-    // 'u64': ['positive fixint', 'uint 8', 'uint 16', 'uint 32', 'uint 64'],
-    // 'i8': ['positive fixint', 'negative fixint', 'int 8', 'uint 8'],
-    // 'i16': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16'],
-    // 'i32': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 64'],
-    //'i64': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 32', 'int 64'],
+    'u8': ['positive fixint', 'uint 8'],
+    'u16': ['positive fixint', 'uint 8', 'uint 16'],
+    'u32': ['positive fixint', 'uint 8', 'uint 16', 'uint 32'],
+    'u64': ['positive fixint', 'uint 8', 'uint 16', 'uint 32', 'uint 64'],
+    'i8': ['positive fixint', 'negative fixint', 'int 8'],
+    'i16': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16'],
+    'i32': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32'],
+    'i64': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 32', 'int 64'],
     'anyinteger': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 32', 'int 64', 'uint 64'],
     'f32': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'float 32'],
     'f64': ['positive fixint', 'negative fixint', 'int 8', 'uint 8', 'int 16', 'uint 16', 'int 32', 'uint 32', 'float 32', 'float 64'],
@@ -49,6 +57,10 @@ const typeCompat = {
     'array': ['fixarray', 'array 16', 'array 32'],
     'flat array': ['bin 8', 'bin 16', 'bin 32'],
 };
+const trueTypeCompat = {}; //This will hold the *actual* type compatibilities, regardless of mpack's weird behavior
+for(let type in typeCompat){
+    trueTypeCompat[type] = typeCompat[type];
+}
 for(let type of ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64']){ //Thank you, mpack.
     typeCompat[type] = typeCompat['anyinteger'];
 }
@@ -60,6 +72,7 @@ export const extraDataModes = {
     'Component': {schemaTest:/World\/\d\/Bricks\/ComponentsShared\.schema/}
 }
 
+const FLOAT_MAX_VALUE = 340282346638528859811704183484516925440.0;
 const boundsCheckFunctions = {
     'i8': v => v >= -128 && v <= 127,
     'u8': v => v <= 255,
@@ -69,7 +82,19 @@ const boundsCheckFunctions = {
     'u32': v => v <= 4294967295,
     'i64': v => v >= -0x8000000000000000n && v <= 0x7fffffffffffffffn,
     'u64': v => v <= 0xffffffffffffffffn,
-    'f32': v => v >= -Number.MAX_VALUE && v <= Number.MAX_VALUE, //this ain't right, but I don't feel like representing this in javascript as it has no concept of 32 bit floats.
+    'f32': v => v >= -FLOAT_MAX_VALUE && v <= FLOAT_MAX_VALUE,
+    'f64': v => v >= -Number.MAX_VALUE && v <= Number.MAX_VALUE,
+}
+const trueBoundsCheckFunctions = {
+    'i8': v => v >= -128 && v <= 127,
+    'u8': v => v <= 255 && v >= 0,
+    'i16': v => v >= -32768 && v <= 32767,
+    'u16': v => v <= 65535 && v >= 0,
+    'i32': v => v >= -2147483648 && v <= 2147483647,
+    'u32': v => v <= 4294967295 && v >= 0,
+    'i64': v => v >= -0x8000000000000000n && v <= 0x7fffffffffffffffn,
+    'u64': v => v <= 0xffffffffffffffffn && v >= 0,
+    'f32': v => v >= -FLOAT_MAX_VALUE && v <= FLOAT_MAX_VALUE,
     'f64': v => v >= -Number.MAX_VALUE && v <= Number.MAX_VALUE,
 }
 boundsCheckFunctions['object'] = boundsCheckFunctions['i32'];
@@ -77,28 +102,47 @@ boundsCheckFunctions['class'] = boundsCheckFunctions['i32'];
 
 /**
  * 
- * @param {Buffer} mpsData 
- * @param {Buffer} schemaData 
+ * @param {Buffer} mpsData Raw bytes of mps file. If null, will only return converted schema data.
+ * @param {Buffer} schemaData Raw bytes of schema file.
+ * @param {Object} globalData Converted GlobalData.
+ * @param {String} dataMode If defined, used for reading instance data out of files.
+ * @param {String} structOverride If defined, will use this struct from the schema instead of the SoA.
  */
-export function readFile(mpsData, schemaData, globalData, dataMode){
+export function readFile(mpsData, schemaData, globalData, dataMode, structOverride){
     if(!schemaData) throw new Error('No schema data provided for Mps Decode');
     let rawSchema = msgpack.decode(schemaData);
     if(!mpsData) return {schema: rawSchema};
     
     //console.log('SCHEMA:\n', JSON.stringify(rawSchema, null, 2));
 
-    let enums = rawSchema[0];
-    let structs = rawSchema[1];
+    let enums;
+    let variants;
+    let structs;
+    if(rawSchema.length == 2){
+        enums = rawSchema[0];
+        variants = {};
+        structs = rawSchema[1];
+    }else if(rawSchema.length == 3){
+        enums = rawSchema[0];
+        variants = rawSchema[1];
+        structs = rawSchema[2];
+    }else{
+        throw new Error(`Invalid array count in schema: ${rawSchema.length}\nDid the format update?`);
+    }
 
     let soaKey;
-    // = Object.keys(structs)[Object.keys(structs).length-1];
-    for(let key in structs){
-        if(key.endsWith('SoA')){
-            soaKey = key;
-            break;
+    if(structOverride){
+        if(structs[structOverride]) soaKey = structOverride;
+        else throw new Error(`Struct Override Error: No struct named ${structOverride} in schema`);
+    }else{
+        for(let key in structs){
+            if(key.endsWith('SoA')){
+                soaKey = key;
+                break;
+            }
         }
+        if(!soaKey) throw new Error('No Structure of Arrays key found');
     }
-    if(!soaKey) throw new Error('No Structure of Arrays key found');
 
     let output = {};
     let ptr = 0; // Data Pointer, where in the .mps file we're currently reading from.
@@ -228,12 +272,12 @@ export function readFile(mpsData, schemaData, globalData, dataMode){
             typecheck(type, 'array 16');
             //Result is length of array, as array is handled in readData.
             size = 2;
-            result = mpsData.readUint16BE(ptr);
+            result = mpsData.readUInt16BE(ptr);
         }else if(mpsType == 0xdd){
             typecheck(type, 'array 32');
             //Result is length of array, as array is handled in readData.
             size = 4;
-            result = mpsData.readUint32BE(ptr);
+            result = mpsData.readUInt32BE(ptr);
         }else if(mpsType == 0xde){
             throw Errors.Unimplemented('read map 16');
         }else if(mpsType == 0xdf){
@@ -375,6 +419,11 @@ export function readFile(mpsData, schemaData, globalData, dataMode){
                         console.log('0x'+ptr.toString(16))
                         throw Errors.Unimplemented(`wire_graph_prim_math_variant=${variantType}`);
                 }
+            }else if(data == 'bundle_path_ref'){
+                result = readData('str');
+            }else if(variants[data]){
+                let variantType = variants[data][readSimpleType('i32')];
+                result = readData(variantType);
             }else{
                 console.log('0x'+ptr.toString(16))
                 throw Errors.NotFound(data);
@@ -464,4 +513,309 @@ export function readFileRaw(mpsData, schemaData){
     
     //console.log('DATA:\n', JSON.stringify(data));
     return {schema:rawSchema, data:data};
+}
+
+export function writeFile(mpsData, schema){
+    let soaKey;
+    for(let key in schema[1]){
+        if(key.endsWith('SoA')){
+            soaKey = key;
+            break;
+        }
+    }
+    if(!soaKey) throw new Error('No Structure of Arrays key found');
+
+    let outputBuff = Buffer.alloc(128);
+    let ptr = 0;
+    const checkBufferSpace = () => {
+        if(ptr >= outputBuff.length * 0.5){
+            let newBuff = Buffer.alloc(outputBuff.length * 2);
+            outputBuff.copy(newBuff);
+            outputBuff = newBuff;
+            //console.log(`Reallocating buffer: ${outputBuff.length}`);
+        }
+    };
+
+    let isSigned = false;
+    let compat;
+    let strLength = 0;
+    const writeNumeric = (type, data) => {
+        if(typeof(data) != 'bigint' && typeof(data) != 'number') throw Errors.WrongType(type, data);
+        if(typeof(data) == 'bigint' && data < Number.MAX_SAFE_INTEGER && data > Number.MIN_SAFE_INTEGER)
+            data = Number(data);
+        isSigned = type.startsWith('i') || type.startsWith('f');
+        compat = trueTypeCompat[type];
+        if(typeof(data) == 'number' && data % 1 != 0){
+            if(data >= -FLOAT_MAX_VALUE && data <= FLOAT_MAX_VALUE && compat.includes('float 32')){
+                ptr = outputBuff.writeUInt8(0xca, ptr);
+                ptr = outputBuff.writeFloatBE(data, ptr);
+                return;
+            }else if(compat.includes('float 64')){
+                ptr = outputBuff.writeUInt8(0xcb, ptr);
+                ptr = outputBuff.writeDoubleBE(data, ptr+1);
+                return;
+            }
+            throw Errors.WrongType(type, data);
+        }else if(data >= 0){
+            if(data <= 127){ // 'positive fixint' is compatible with everything
+                ptr = outputBuff.writeUInt8(data, ptr);
+                return;
+            }
+            if(data <= 255 && compat.includes('uint 8')){
+                ptr = outputBuff.writeUInt8(0xcc, ptr);
+                ptr = outputBuff.writeUInt8(data, ptr);
+                return;
+            }
+            if(isSigned && data <= 32767 && compat.includes('int 16')){
+                ptr = outputBuff.writeUInt8(0xd1, ptr);
+                ptr = outputBuff.writeInt16BE(data, ptr);
+                return;
+            }
+            if(data <= 65535 && compat.includes('uint 16')){
+                ptr = outputBuff.writeUInt8(0xcd, ptr);
+                ptr = outputBuff.writeUInt16BE(data, ptr);
+                return;
+            }
+            if(isSigned && data <= 2147483647 && compat.includes('int 32')){
+                ptr = outputBuff.writeUInt8(0xd2, ptr);
+                ptr = outputBuff.writeInt32BE(data, ptr);
+                return;
+            }
+            if(data <= 4294967295 && compat.includes('uint 32')){
+                ptr = outputBuff.writeUInt8(0xce, ptr);
+                ptr = outputBuff.writeUInt32BE(data, ptr);
+                return;
+            }
+            if(isSigned && data <= 0x7fffffffffffffffn && compat.includes('int 64')){
+                ptr = outputBuff.writeUInt8(0xd3, ptr);
+                ptr = outputBuff.writeBigInt64BE(data, ptr);
+                return;
+            }
+            if(data <= 0xffffffffffffffffn && compat.includes('uint 64')){
+                ptr = outputBuff.writeUInt8(0xcf, ptr);
+                ptr = outputBuff.writeBigUInt64BE(data, ptr);
+                return;
+            }
+            throw Errors.WrongType(type, data);
+        }else if(isSigned){
+            if(data >= -32 && compat.includes('negative fixint')){
+                ptr = outputBuff.writeUInt8(data, ptr);
+                return;
+            }
+            if(data >= -128 && compat.includes('int 8')){
+                ptr = outputBuff.writeUInt8(0xd0, ptr);
+                ptr = outputBuff.writeInt8(data, ptr);
+                return;
+            }
+            if(data >= -32768 && compat.includes('int 16')){
+                ptr = outputBuff.writeUInt8(0xd1, ptr);
+                ptr = outputBuff.writeInt16BE(data, ptr);
+                return;
+            }
+            if(data >= -2147483648 && compat.includes('int 32')){
+                ptr = outputBuff.writeUInt8(0xd2, ptr);
+                ptr = outputBuff.writeInt32BE(data, ptr);
+                return;
+            }
+            if(data >= -0x8000000000000000n && compat.includes('int 64')){
+                ptr = outputBuff.writeUInt8(0xd3, ptr);
+                ptr = outputBuff.writeBigInt64BE(data, ptr);
+                return;
+            }
+            throw Errors.WrongType(type, data);
+        }else{
+            throw new Error(`Value ${data} is negative but ${type} is unsigned`);
+        }
+    };
+    const writeType = (type, data) => {
+        checkBufferSpace();
+        //console.log(`Writing ${data} (${type}) : ${ptr} / 0x${ptr.toString(16)}`);
+        switch(type){
+            case 'bool':
+                if(data) ptr = outputBuff.writeUInt8(0xc3);
+                else ptr = outputBuff.writeUInt8(0xc2);
+                break;
+            case 'str':
+                if(typeof(data) != 'string') throw Errors.WrongType(type, data);
+                strLength = utfEncoder.encode(data).byteLength;
+                if(strLength < 31){
+                    ptr = outputBuff.writeUInt8(0xa0 | strLength, ptr);
+                    ptr += outputBuff.write(data, ptr, 'utf8');
+                }else if(strLength < 255){
+                    ptr = outputBuff.writeUInt8(0xd9, ptr);
+                    ptr = outputBuff.writeUInt8(strLength, ptr);
+                    ptr += outputBuff.write(data, ptr, 'utf8');
+                }else if(strLength < 65535){
+                    ptr = outputBuff.writeUInt8(0xda, ptr);
+                    ptr = outputBuff.writeUInt16BE(strLength, ptr);
+                    ptr += outputBuff.write(data, ptr, 'utf8');
+                }else if(strLength < 4294967295){
+                    ptr = outputBuff.writeUInt8(0xdb, ptr);
+                    ptr = outputBuff.writeUInt32BE(strLength, ptr);
+                    ptr += outputBuff.write(data, ptr, 'utf8');
+                }else{
+                    throw new Error('String too large!');
+                }
+                break;
+            case 'array':
+                if(data < 15){
+                    ptr = outputBuff.writeUInt8(0x90 | data, ptr);
+                }else if(data < 65535){
+                    ptr = outputBuff.writeUInt8(0xdc, ptr);
+                    ptr = outputBuff.writeUInt16BE(data, ptr);
+                }else if(data < 4294967295){
+                    ptr = outputBuff.writeUInt8(0xdd, ptr);
+                    ptr = outputBuff.writeUInt32BE(data, ptr);
+                }else{
+                    throw new Error('Array too large!');
+                }
+                break;
+            case 'flat array':
+                if(data < 255){
+                    ptr = outputBuff.writeUInt8(0xc4, ptr);
+                    ptr = outputBuff.writeUInt8(data, ptr);
+                }else if(data < 65535){
+                    ptr = outputBuff.writeUInt8(0xc5, ptr);
+                    ptr = outputBuff.writeUInt16BE(data, ptr);
+                }else if(data < 4294967295){
+                    ptr = outputBuff.writeUInt8(0xc6, ptr);
+                    ptr = outputBuff.writeUInt32BE(data, ptr);
+                }else{
+                    throw new Error(`Flat array too large! (${data})`);
+                }
+                break;
+            case 'object':
+            case 'class':
+                writeNumeric('i32', data);
+                break;
+            default:
+                if(type.startsWith('u') || type.startsWith('i') || type.startsWith('f')){
+                    writeNumeric(type, data);
+                }else{
+                    throw Errors.Unimplemented(`Type of ${type}: ${data}`);
+                }
+        }
+        //console.log(outputBuff);
+    };
+    const getRawTypeSize = (type) => {
+        switch(type){
+            case 'bool':
+            case 'str':
+            case 'object':
+            case 'class':
+                console.log('Cannot get size for raw type: ' + type);
+                return 0;
+            case 'u8':
+            case 'i8':
+                return 1;
+            case 'u16':
+            case 'i16':
+                return 2;
+            case 'u32':
+            case 'i32':
+            case 'f32':
+                return 4;
+            case 'u64':
+            case 'i64':
+            case 'f64':
+                return 8;
+            default:
+                if(schema[0][type]){
+                    console.log('Cannot get raw size for enum: ' + type);
+                    return 0;
+                }else if(schema[1][type]){
+                    let size = 0;
+                    for(let key in schema[1][type]){
+                        size += getRawTypeSize(schema[1][type][key]);
+                    }
+                    return size;
+                }else{
+                    throw Errors.NotFound(type);
+                }
+        }
+    };
+    const writeRawType = (type, data) => {
+        checkBufferSpace();
+        //console.log(`Writing ${data} (${type}) : ${ptr} / 0x${ptr.toString(16)}`);
+        if(boundsCheckFunctions[type] && !boundsCheckFunctions[type](data)) throw Errors.WriteOOB(type, data);
+        switch(type){
+            case 'bool':
+            case 'str':
+            case 'object':
+            case 'class':
+                throw Errors.Unimplemented('Write Raw '+type);
+            case 'u8':
+                ptr = outputBuff.writeUInt8(data, ptr);
+                break;
+            case 'u16':
+                ptr = outputBuff.writeUInt16LE(data, ptr);
+                break;
+            case 'u32':
+                ptr = outputBuff.writeUInt32LE(data, ptr);
+                break;
+            case 'u64':
+                ptr = outputBuff.writeBigUInt64LE(data, ptr);
+                break;
+            case 'i8':
+                ptr = outputBuff.writeInt8(data, ptr);
+                break;
+            case 'i16':
+                ptr = outputBuff.writeInt16LE(data, ptr);
+                break;
+            case 'i32':
+                ptr = outputBuff.writeInt32LE(data, ptr);
+                break;
+            case 'i64':
+                ptr = outputBuff.writeBigInt64LE(data, ptr);
+                break;
+            case 'f32':
+                ptr = outputBuff.writeFloatLE(data, ptr);
+                break;
+            case 'f64':
+                ptr = outputBuff.writeDoubleLE(data, ptr);
+                break;
+            default:
+                if(schema[0][type]){
+                    throw Errors.Unimplemented('Write Raw Enums');
+                }else if(schema[1][type]){
+                    for(let key in schema[1][type]){
+                        writeRawType(schema[1][type][key], data[key]);
+                    }
+                }else{
+                    throw Errors.NotFound(type);
+                }
+        }
+        //console.log(outputBuff);
+    };
+
+    const writeData = (data, structure) => {
+        //console.log(data);
+        //console.log(structure);
+        if(typeof(structure) == 'object'){
+            for(let entry in structure){
+                if(Array.isArray(structure[entry])){
+                    if(structure[entry].length > 2){
+                        throw Errors.BadSchema(entry, structure[entry]);
+                    }else if(structure[entry].length == 2){ // Flat Array
+                        writeType('flat array', getRawTypeSize(structure[entry][0]) * data[entry].length);
+                        for(let i=0; i<data[entry].length; i++){
+                            writeRawType(structure[entry][0], data[entry][i]);
+                        }
+                    }else{ // Array
+                        writeType('array', data[entry].length);
+                        for(let i=0; i<data[entry].length; i++){
+                            writeType(structure[entry][0], data[entry][i]);
+                        }
+                    }
+                }else{
+                    throw Errors.Unimplemented('Non-Array Structure Value');
+                }
+                checkBufferSpace();
+            }
+        }
+    };
+
+    writeData(mpsData, schema[1][soaKey]);
+
+    return outputBuff.subarray(0, ptr);
 }
