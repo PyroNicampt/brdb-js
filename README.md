@@ -28,6 +28,9 @@ Dumps the contents of the save to a folder, in a human readable format.
 Same as dump, but also writes all schemas.
 - `dumpraw`
 Dumps the raw decompressed contents to a folder.
+- `thumbnail=<path>`
+Replaces the thumbnail with the PNG at the given path. File format must be PNG.
+Only works on .brz, will fail on .brdb. **Overwrites original file.**
 - `owners`
 Lists statistics saved per-user like brick count, entity count, components, and wires, in order of most to least
 - `bundle`
