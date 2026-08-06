@@ -26,7 +26,7 @@ if(!fs.existsSync(targetFile)){
 const targetExtension = path.extname(targetFile);
 
 let saveFile = null;
-switch(targetExtension){
+switch(targetExtension.toLowerCase()){
     case '.brdb':
         console.log('Reading BRDB...');
         saveFile = BrdbRead(targetFile);
@@ -87,6 +87,33 @@ for(let operation of operations){
                 console.log(`Dumped filesystem to ${outputFolder}`);
             })();
             break;
+		case 'thumbnail':
+			(() => {
+				if (targetExtension.toLowerCase() !== ".brz")
+				{
+					console.log("Thumbnail replacement only works on .brz files currently. Skipping operation.");
+					return;
+				}
+				let thumbnailFile = operation.split('=')[1];
+				console.log(`Replacing thumbnail of ${saveFile.name} with ${thumbnailFile}`);
+				let thumbnailData = fs.readFileSync(thumbnailFile);
+
+				for (let file of saveFile.files)
+				{
+					if (!file) continue;
+					if (!withinTimestamp(file, timestamp)) continue;
+					if (file.name === "Thumbnail.png")
+					{
+						saveFile.loadBlobs([file]);
+						file.blob.content = thumbnailData;
+						BrzWrite(targetFile, saveFile);
+						return;
+					}
+				}
+				console.log("Couldn't find the Thumbnail.png in the save file for some reason?");
+
+			})();
+			break;
         case 'dumpfull':
             dumpSchemas = true;
             // fallthrough
