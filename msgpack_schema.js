@@ -421,6 +421,8 @@ export function readFile(mpsData, schemaData, globalData, dataMode, structOverri
                 }
             }else if(data == 'bundle_path_ref'){
                 result = readData('str');
+            }else if(data == 'weak_object'){
+                result = readSimpleType('i8');
             }else if(variants[data]){
                 let variantType = variants[data][readSimpleType('i32')];
                 result = readData(variantType);

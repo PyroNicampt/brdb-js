@@ -402,7 +402,7 @@ for(let operation of operations){
                 if(data.entities){
                     console.log("Reading Entities...");
                     let entCount = data.entities.PersistentIndices.length;
-                    data.entities.WeldParentFlags = unpackFlags(data.entities.WeldParentFlags.Flags, entCount);
+                    if(data.entities.WeldParentFlags) data.entities.WeldParentFlags = unpackFlags(data.entities.WeldParentFlags.Flags, entCount);
                     data.entities.PhysicsLockedFlags = unpackFlags(data.entities.PhysicsLockedFlags.Flags, entCount);
                     data.entities.PhysicsSleepingFlags = unpackFlags(data.entities.PhysicsSleepingFlags.Flags, entCount);
                     let tmp = 0;
@@ -441,6 +441,7 @@ for(let operation of operations){
                     'Component_SpawnPoint',
                     'Component_CheckPoint',
                     'Component_BrickPropertyChanger',
+                    'BrickComponentType_WireGraph_Expr_EdgeDetector'
                 ];
                 let worldGridFilteredComponents = [
                     'Component_Internal_WheelEngine',
