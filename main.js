@@ -192,6 +192,29 @@ for(let operation of operations){
                 console.log(`Converted and Dumped schemas to ${outputFolder}`);
             })();
             break;
+        case 'ownerstats':
+            (() => {
+                let ownerData = saveFile.readMps('World/0/Owners.mps', timestamp);
+                console.log(`Stats for ${ownerData.UserIds.length} users:\n`);
+                for(let i=0; i<ownerData.UserIds.length; i++){
+                    let userId =
+                            ownerData.UserIds[i].A.toString(16).padStart(8,'0') +
+                            ownerData.UserIds[i].B.toString(16).padStart(8,'0') +
+                            ownerData.UserIds[i].C.toString(16).padStart(8,'0') +
+                            ownerData.UserIds[i].D.toString(16).padStart(8,'0');
+                    let userName = ownerData.UserNames[i];
+                    let displayName = ownerData.DisplayNames[i];
+                    let entityCount = ownerData.EntityCounts[i];
+                    let brickCount = ownerData.BrickCounts[i];
+                    let componentCount = ownerData.ComponentCounts[i];
+                    let wireCount = ownerData.WireCounts[i];
+                    userId = userId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/g, '$1-$2-$3-$4-$5');
+                    let formattedName = `${displayName} (${userName}) [${userId}]`;
+                    
+                    console.log(` ${formattedName}\n ${brickCount} bricks\n ${entityCount} entities\n ${componentCount} components\n ${wireCount} wires\n`);
+                }
+            })();
+            break;
         case 'owners':
             (() => {
                 let ownerData = saveFile.readMps('World/0/Owners.mps', timestamp);

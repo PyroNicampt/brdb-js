@@ -30,6 +30,9 @@ Same as dump, but also writes all schemas.
 Dumps the raw decompressed contents to a folder.
 - `owners`
 Lists statistics saved per-user like brick count, entity count, components, and wires, in order of most to least
+- `ownerstats`
+Lists individual users and their statistics.  
+Note to self: add an optional search for specific users in this operator.
 - `bundle`
 Outputs the bundle data of a .brz, showing description, version number, dates, etc.
 Only works on .brz, will fail on .brdb.
