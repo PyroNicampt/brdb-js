@@ -219,6 +219,7 @@ for(let operation of operations){
             (() => {
                 let ownerData = saveFile.readMps('World/0/Owners.mps', timestamp);
                 let owners = [];
+                let attributableCount = 0;
                 for(let i=0; i<ownerData.UserIds.length; i++){
                     owners[i] = {
                         userId:
@@ -235,6 +236,8 @@ for(let operation of operations){
                     };
                     owners[i].userId = owners[i].userId.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/g, '$1-$2-$3-$4-$5');
                     owners[i].formattedName = `${owners[i].displayName} (${owners[i].userName}) [${owners[i].userId}]`;
+
+                    if(owners[i].brickCount > 0) attributableCount++;
                 }
     
                 let totals = {
@@ -275,7 +278,7 @@ for(let operation of operations){
                     if(user.brickCount == 0) break;
                     console.log(`${user.brickCount} > ${user.formattedName}`);
                 }
-                console.log(`\nTotals for ${owners.length} players in ${saveFile.name}:\n Entities: ${totals.entityCount}\n Components: ${totals.componentCount}\n Wires: ${totals.wireCount}\n Bricks: ${totals.brickCount}`);
+                console.log(`\nTotals for ${owners.length} players (${attributableCount} attributable) in ${saveFile.name}:\n Entities: ${totals.entityCount}\n Components: ${totals.componentCount}\n Wires: ${totals.wireCount}\n Bricks: ${totals.brickCount}`);
             })();
             break;
         case 'bundle':
