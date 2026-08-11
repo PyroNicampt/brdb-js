@@ -468,7 +468,15 @@ for(let operation of operations){
                     'Component_SpawnPoint',
                     'Component_CheckPoint',
                     'Component_BrickPropertyChanger',
-                    'BrickComponentType_WireGraph_Expr_EdgeDetector'
+                    'Component_Internal_Slider',
+                    'Component_Internal_ServoSlider',
+                    'Component_Internal_RigidSlider',
+                    'Component_Internal_MotorSlider',
+                    'Component_Internal_Joint_Wheel',
+                    'Component_Internal_Servo',
+                    'Component_Internal_RigidBearing',
+                    'Component_Internal_Motor',
+                    'Component_Internal_Bearing',
                 ];
                 let worldGridFilteredComponents = [
                     'Component_Internal_WheelEngine',
