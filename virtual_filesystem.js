@@ -221,15 +221,17 @@ function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false, get
         //console.log(`Found ${vfs.buildPath(targetMps.parent_id, targetMps.name)} and ${vfs.buildPath(targetSchema.parent_id, targetSchema.name)}\nReading...`);
         
         let globalData;
-        if(dataMode == 'None'){
-            globalData = getGlobalData(vfs, timestamp);
-        }else if(dirName+'/'+fileName != 'World/0/GlobalData'){
-            let schemaPath = vfs.buildPath(targetSchema.parent_id, targetSchema.name);
-            for(let dataModeCheck in extraDataModes){
-                if(extraDataModes[dataModeCheck].schemaTest.test(schemaPath)){
-                    dataMode = dataModeCheck;
-                    globalData = getGlobalData(vfs, timestamp);
-                    break;
+        if(getMps){
+            if(dataMode == 'None'){
+                globalData = getGlobalData(vfs, timestamp);
+            }else if(dirName+'/'+fileName != 'World/0/GlobalData'){
+                let schemaPath = vfs.buildPath(targetSchema.parent_id, targetSchema.name);
+                for(let dataModeCheck in extraDataModes){
+                    if(extraDataModes[dataModeCheck].schemaTest.test(schemaPath)){
+                        dataMode = dataModeCheck;
+                        globalData = getGlobalData(vfs, timestamp);
+                        break;
+                    }
                 }
             }
         }
@@ -253,7 +255,7 @@ function grabMpsSchema(vfs, mpsFile, timestamp, getMps, returnFiles = false, get
                 if(getFileOnly) result = {};
                 else{
                     vfs.loadBlobs([targetSchema]);
-                    result = mpsReader(null, targetSchema.blob.content, globalData, dataMode);
+                    result = mpsReader(null, targetSchema.blob.content);
                 }
                 if(returnFiles) result.files = {schema:targetSchema};
             }
